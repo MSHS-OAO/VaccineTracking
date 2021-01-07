@@ -34,21 +34,10 @@ rm(list = ls())
 
 # Determine path for working directory
 if (list.files("J://") == "Presidents") {
-  user_directory <- "J:/Presidents/HSPI-PM/Operations Analytics and Optimization/Projects/Service Lines/Lab Kpi/Data"
+  user_directory <- "J:/Presidents/HSPI-PM/Operations Analytics and Optimization/Projects/System Operations/COVID Vaccine/ScheduleData"
 } else {
-  user_directory <- "J:/deans/Presidents/HSPI-PM/Operations Analytics and Optimization/Projects/Service Lines/Lab Kpi/Data"
+  user_directory <- "J:/deans/Presidents/HSPI-PM/Operations Analytics and Optimization/Projects/System Operations/COVID Vaccine/ScheduleData"
 }
 
 # 
-# # Set working directory to script location
-# script_path <- dirname(rstudioapi::getActiveDocumentContext()$path)
-# setwd(script_path)
-# # Change working directory to folder with daily reports
-# setwd("..\\Data\\Epic Census Data")
-# user_wd <- getwd()
-# 
-# # user_wd <- "J:\\Presidents\\HSPI-PM\\Operations Analytics and Optimization\\Projects\\System Operations\\Covid IP Staffing Model\\Data\\Epic Census Data"
-# user_path <- paste0(user_wd, "\\*.*")
-# 
-# initial_run <- TRUE
-# update_excel_repo <- TRUE
+
