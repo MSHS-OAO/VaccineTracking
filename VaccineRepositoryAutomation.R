@@ -58,16 +58,22 @@ vx_sched <- vx_sched[vx_sched$Patient != "Patient, Test", ]
 vx_sched <- vx_sched %>% 
   mutate(Location = str_replace(str_replace(`Provider/Resource`, "COVID-19 VACCINE ", ""), "\\s\\[[0-9]+\\]", ""),
          Mfg = ifelse(is.na(Immunizations), "Unknown", ifelse(str_detect(Immunizations, "Pfizer"), "Pfizer", "Moderna")),
-         Dose = ifelse(str_detect(Type, "DOSE 1"), 1, ifelse(str_detect(Type, "DOSE 2"), 2, NA)))
+         Dose = ifelse(str_detect(Type, "DOSE 1"), 1, ifelse(str_detect(Type, "DOSE 2"), 2, NA)),
+         ApptYear = year(Date),
+         ApptMonth = month(Date),
+         ApptDay = day(Date),
+         ApptWeek = week(Date))
 
-
-test <- vx_sched %>%
-  group_by(`Appt Status`) %>%
-  summarize(Count = n())
-
+# Subset completed vaccines based on appointment status
 vx_compl <- vx_sched %>%
   filter(`Appt Status` %in% c("Comp", "Arrived", "Checked Out"))
 
 vx_compl_summary <- vx_compl %>%
   group_by(Location, Date) %>%
   summarize(Count = n())
+
+
+### Next steps
+# Count scheduled appointments, check to make sure patient hasn't already received that dose
+
+
