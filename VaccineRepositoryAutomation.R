@@ -39,5 +39,35 @@ if (list.files("J://") == "Presidents") {
   user_directory <- "J:/deans/Presidents/HSPI-PM/Operations Analytics and Optimization/Projects/System Operations/COVID Vaccine/ScheduleData"
 }
 
-# 
+# Set path for file selection
+user_path <- paste0(user_directory, "\\*.*")
 
+# Determine whether or not to update an existing repo
+initial_run <- TRUE
+update_repo <- FALSE
+
+# Import raw data from Epic
+raw_df <- read_excel(choose.files(default = user_path, caption = "Select Epic report"), 
+                     col_names = TRUE, na = c("", "NA"))
+vx_sched <- raw_df
+
+# Remove test patient
+vx_sched <- vx_sched[vx_sched$Patient != "Patient, Test", ]
+
+# Create column with vaccine location
+vx_sched <- vx_sched %>% 
+  mutate(Location = str_replace(str_replace(`Provider/Resource`, "COVID-19 VACCINE ", ""), "\\s\\[[0-9]+\\]", ""),
+         Mfg = ifelse(is.na(Immunizations), "Unknown", ifelse(str_detect(Immunizations, "Pfizer"), "Pfizer", "Moderna")),
+         Dose = ifelse(str_detect(Type, "DOSE 1"), 1, ifelse(str_detect(Type, "DOSE 2"), 2, NA)))
+
+
+test <- vx_sched %>%
+  group_by(`Appt Status`) %>%
+  summarize(Count = n())
+
+vx_compl <- vx_sched %>%
+  filter(`Appt Status` %in% c("Comp", "Arrived", "Checked Out"))
+
+vx_compl_summary <- vx_compl %>%
+  group_by(Location, Date) %>%
+  summarize(Count = n())
