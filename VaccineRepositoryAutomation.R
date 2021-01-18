@@ -66,8 +66,9 @@ if (update_repo) {
     raw_df <- read_excel(choose.files(default = user_path, caption = "Select initial Epic schedule"), 
                                   col_names = TRUE, na = c("", "NA"))
     } else {
-      sched_repo <- read_excel(choose.files(default = user_path, caption = "Select schedule repository"), 
-                            col_names = TRUE, na = c("", "NA"))
+      # sched_repo <- read_excel(choose.files(default = user_path, caption = "Select schedule repository"), 
+      #                       col_names = TRUE, na = c("", "NA"))
+      sched_repo <- readRDS(choose.files(default = user_path, caption = "Select schedule repository"))
       
       # Convert appointment date in schedule repository from posixct to date
       sched_repo <- sched_repo %>%
@@ -95,20 +96,48 @@ if (update_repo) {
   # Determine dates in new report
   current_dates <- sort(unique(new_sched$ApptDate))
   
-  # Update schedule repository by removing duplicate dates and adding data from new report
-  sched_repo <- sched_repo %>%
-    filter(!(ApptDate >= current_dates[1]))
-  sched_repo <- rbind(sched_repo, new_sched)
+  if (initial_run) {
+    sched_repo <- new_sched
+  } else {
+    # Update schedule repository by removing duplicate dates and adding data from new report
+    sched_repo <- sched_repo %>%
+      filter(!(ApptDate >= current_dates[1]))
+    sched_repo <- rbind(sched_repo, new_sched)
+  }
   
   # Export updated schedule repository
-  write_xlsx(sched_repo, paste0(user_directory, "/Sched Repo ", 
-                                format(min(sched_repo$ApptDate), "%m%d%y"), " to ", 
-                                format(max(sched_repo$ApptDate), "%m%d%y"), 
-                                " on ", format(Sys.time(), "%m%d%y %H%M"), ".xlsx"))
+  # write_xlsx(sched_repo, paste0(user_directory, "/Sched Repo ", 
+  #                               format(min(sched_repo$ApptDate), "%m%d%y"), " to ", 
+  #                               format(max(sched_repo$ApptDate), "%m%d%y"), 
+  #                               " on ", format(Sys.time(), "%m%d%y %H%M"), ".xlsx"))
+  
+  saveRDS(sched_repo, paste0(user_directory, "/Sched Repo ", 
+                             format(min(sched_repo$ApptDate), "%m%d%y"), " to ", 
+                             format(max(sched_repo$ApptDate), "%m%d%y"), 
+                             " on ", format(Sys.time(), "%m%d%y %H%M"), ".rds"))
+  
 } else {
-  sched_repo <- read_excel(choose.files(default = user_path, caption = "Select schedule repository"), 
-                           col_names = TRUE, na = c("", "NA"))
+  # sched_repo <- read_excel(choose.files(default = user_path, caption = "Select schedule repository"), 
+  #                          col_names = TRUE, na = c("", "NA"))
+  sched_repo <- readRDS(choose.files(default = user_path, caption = "Select schedule repository"))
+  
+  
 }
+
+# saveRDS(sched_repo, file = paste0(user_directory, "/Sched Repo ", 
+#                                   format(min(sched_repo$ApptDate), "%m%d%y"), " to ", 
+#                                   format(max(sched_repo$ApptDate), "%m%d%y"), 
+#                                   " on ", format(Sys.time(), "%m%d%y %H%M"), ".rds"))
+# 
+# a <- readRDS(file = choose.files(default = user_path, caption = "Select schedule repository"))
+# 
+# test_a <- a %>%
+#   group_by(Department, ApptDate, `Appt Status`) %>%
+#   summarize(Count = n())
+# 
+# test_sched_repo <- sched_repo %>%
+#   group_by(Department, ApptDate, `Appt Status`) %>%
+#   summarize(Count = n())
 
 # Format and analyze schedule to date for dashboards
 sched_to_date <- sched_repo
