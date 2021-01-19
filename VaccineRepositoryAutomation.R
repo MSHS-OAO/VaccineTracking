@@ -48,6 +48,12 @@ user_path <- paste0(user_directory, "\\*.*")
 initial_run <- FALSE
 update_repo <- TRUE
 
+# Reports to add to repo
+num_new_reports <- 1
+
+# Determine whether or not to update walk-in analysis
+update_walkins <- FALSE
+
 # Import reference data for site and pod mappings
 site_mappings <- read_excel(paste0(user_directory, "/Reference 2021-01-15.xlsx"), sheet = "Site Mappings")
 pod_mappings <- read_excel(paste0(user_directory, "/Reference 2021-01-15.xlsx"), sheet = "Pod Mappings Simple")
@@ -55,8 +61,16 @@ pod_mappings <- read_excel(paste0(user_directory, "/Reference 2021-01-15.xlsx"),
 # Store today's date
 today <- Sys.Date()
 
+# Create dataframe with dates and weeks
+all_dates <- data.frame("Date" = seq.Date(as.Date("1/1/20", format = "%m/%d/%y"), 
+                                             as.Date("12/31/21", format = "%m/%d/%y"), 
+                                             by = 1))
+all_dates <- all_dates %>%
+  mutate(Year = year(Date),
+         WeekNum = format(Date, "%U"))
+
 # Site order
-sites <- c("MSB", "MSBI", "MSH", "MSM", "MSQ", "MSW")
+sites <- c("MSB", "MSBI", "MSH", "MSM", "MSQ", "MSW", "MSHS")
 
 # Pod type order
 pod_type <- c("Employee", "Patient", "All")
@@ -79,8 +93,23 @@ if (update_repo) {
       sched_repo <- sched_repo %>%
         mutate(ApptDate = date(ApptDate))
       
-      raw_df <- read_excel(choose.files(default = user_path, caption = "Select current Epic schedule"), 
-                       col_names = TRUE, na = c("", "NA"))
+      if (num_new_reports == 1) {
+        raw_df <- read_excel(choose.files(default = user_path, caption = "Select current Epic schedule"), 
+                                       col_names = TRUE, na = c("", "NA"))
+      } else if (num_new_reports == 2) {
+        raw_df1 <- read_excel(choose.files(default = user_path, caption = "Select 1st new Epic schedule"), 
+                              col_names = TRUE, na = c("", "NA"))
+        
+        raw_df2 <- read_excel(choose.files(default = user_path, caption = "Select 2nd new Epic schedule"), 
+                              col_names = TRUE, na = c("", "NA"))
+        
+        raw_df <- rbind(raw_df1, raw_df2)
+      } else {
+        print("Cannot accept more than 2 reports")
+        break
+      }
+      # raw_df <- read_excel(choose.files(default = user_path, caption = "Select current Epic schedule"), 
+      #                  col_names = TRUE, na = c("", "NA"))
     }
   
   new_sched <- raw_df
@@ -109,28 +138,20 @@ if (update_repo) {
       filter(!(ApptDate >= current_dates[1]))
     sched_repo <- rbind(sched_repo, new_sched)
   }
-  
-  # Export updated schedule repository
-  # write_xlsx(sched_repo, paste0(user_directory, "/Sched Repo ", 
-  #                               format(min(sched_repo$ApptDate), "%m%d%y"), " to ", 
-  #                               format(max(sched_repo$ApptDate), "%m%d%y"), 
-  #                               " on ", format(Sys.time(), "%m%d%y %H%M"), ".xlsx"))
-  
-  saveRDS(sched_repo, paste0(user_directory, "/Sched w Zip Repo ", 
-                             format(min(sched_repo$ApptDate), "%m%d%y"), " to ", 
-                             format(max(sched_repo$ApptDate), "%m%d%y"), 
+
+  saveRDS(sched_repo, paste0(user_directory, "/Sched w Zip Repo ",
+                             format(min(sched_repo$ApptDate), "%m%d%y"), " to ",
+                             format(max(sched_repo$ApptDate), "%m%d%y"),
                              " on ", format(Sys.time(), "%m%d%y %H%M"), ".rds"))
   
 } else {
-  # sched_repo <- read_excel(choose.files(default = user_path, caption = "Select schedule repository"), 
-  #                          col_names = TRUE, na = c("", "NA"))
+
   sched_repo <- readRDS(choose.files(default = user_path, caption = "Select schedule repository"))
-  
   
 }
 
 
-# Format and analyze schedule to date for dashboards
+# Format and analyze schedule to date for dashboards ---------------------------
 sched_to_date <- sched_repo
 
 sched_to_date <- left_join(sched_to_date, site_mappings,
@@ -142,68 +163,188 @@ sched_to_date <- left_join(sched_to_date, pod_mappings[ , c("Provider", "Pod Typ
 sched_to_date[is.na(sched_to_date$`Pod Type`), "Pod Type"] <- "Patient"
 
 sched_to_date <- sched_to_date %>%
-  mutate(Status = ifelse(`Appt Status` %in% c("Arrived", "Comp", "Checked Out"), "Arr", `Appt Status`),
+  mutate(Status = ifelse(`Appt Status` %in% c("Arrived", "Comp", "Checked Out"), "Arr", `Appt Status`), # Group various arrival statuses as "Arr"
+         Status2 = ifelse(ApptDate == today & Status == "Arr", "Sch", # Categorize any arrivals from today as scheduled for easier manipulation
+                          ifelse(ApptDate < today & Status == "Sch", "No Show", Status)), # Categorize any appts still in sch status from prior days as no shows
          WeekNum = format(ApptDate, "%U"),
          DOW = weekdays(ApptDate),
          NYZip = substr(`ZIP Code`, 1, 5) %in% ny_zips$zipcode)
 
-# Start summarizing data
-dose1_7days_walkins_type <- sched_to_date %>%
+# Summarize schedule data for possible stratifications and export
+sched_summary <- sched_to_date %>%
+  group_by(Site, `Pod Type`, Dose, ApptDate, NYZip, Status2) %>%
+  summarize(Count = n())
+
+
+# Summarize schedule breakdown for next 2 weeks and export ------------------------------
+sched_breakdown <- sched_to_date %>%
+  filter(Status2 %in% c("Arr", "Sch") & ApptDate >= (today - 1) & ApptDate <= (today + 13)) %>%
+  group_by(Dose, `Pod Type`, Site, Status2, ApptDate) %>%
+  summarize(Count = n()) %>%
+  ungroup()
+
+sched_breakdown <- sched_breakdown[order(sched_breakdown$Dose,
+                                         sched_breakdown$`Pod Type`,
+                                         sched_breakdown$Site), ]
+
+sched_breakdown_cast <- dcast(sched_breakdown,
+                              Dose + `Pod Type` + Site ~ Status2 + ApptDate,
+                              value.var = "Count")
+
+# Summarize doses administered to date --------------------------------
+# Summarize administered doses prior to today and stratify by site and pod type
+admin_doses_site_pod_type <- sched_to_date %>%
+  filter(Status2 == "Arr") %>%
+  group_by(Site, `Pod Type`, Dose) %>%
+  summarize(DateRange = paste0(format(min(ApptDate), "%m/%d/%y"), "-", format(max(ApptDate), "%m/%d/%y")),
+            Count = n()) %>%
+  ungroup()
+
+# Summarize administered doses prior to today and stratify only by site
+admin_doses_site_all_pods <- sched_to_date %>%
+  filter(Status2 == "Arr") %>%
+  group_by(Site, Dose) %>%
+  summarize("Pod Type" = "All",
+            DateRange = paste0(format(min(ApptDate), "%m/%d/%y"), "-", format(max(ApptDate), "%m/%d/%y")),
+            Count = n()) %>%
+  ungroup()
+
+admin_doses_site_all_pods <- admin_doses_site_all_pods[ , colnames(admin_doses_site_pod_type)]
+
+# Summarize administered doses across system and stratify by pod type
+admin_doses_system_pod_type <- sched_to_date %>%
+  filter(Status2 == "Arr") %>%
+  group_by(`Pod Type`, Dose) %>%
+  summarize(Site = "MSHS", DateRange = paste0(format(min(ApptDate), "%m/%d/%y"), "-", format(max(ApptDate), "%m/%d/%y")),
+            Count = n()) %>%
+  ungroup()
+
+admin_doses_system_pod_type <- admin_doses_system_pod_type[ , colnames(admin_doses_site_pod_type)]
+
+# Summarize administered doses across system
+admin_doses_system_all_pods <- sched_to_date %>%
+  filter(Status2 == "Arr") %>%
+  group_by(Dose) %>%
+  summarize(Site = "MSHS", 
+            `Pod Type` = "All",
+            DateRange = paste0(format(min(ApptDate), "%m/%d/%y"), "-", format(max(ApptDate), "%m/%d/%y")),
+            Count = n()) %>%
+  ungroup()
+
+admin_doses_system_all_pods <- admin_doses_system_all_pods[ , colnames(admin_doses_site_pod_type)]
+
+# Combine administered data by pod type, across pods, and across system
+admin_doses_summary <- rbind(admin_doses_site_pod_type, 
+                             admin_doses_site_all_pods,
+                             admin_doses_system_pod_type,
+                             admin_doses_system_all_pods)
+
+admin_doses_summary <- admin_doses_summary %>%
+  mutate(Dose = ifelse(Dose == 1, "Dose1", "Dose2"))
+
+admin_2nd_dose_remaining <- dcast(admin_doses_summary,
+                         Site + `Pod Type` ~ Dose, value.var = "Count")
+
+
+admin_2nd_dose_remaining <- admin_2nd_dose_remaining %>%
+  mutate(RemainingDose2 = Dose1 - Dose2,
+         Site = factor(Site, levels = sites, ordered = TRUE),
+         `Pod Type` = factor(`Pod Type`, levels = pod_type, ordered = TRUE))
+
+admin_2nd_dose_remaining <- admin_2nd_dose_remaining[order(admin_2nd_dose_remaining$Site, 
+                                                           admin_2nd_dose_remaining$`Pod Type`), ]
+
+admin_doses_table_export <- melt(admin_2nd_dose_remaining, 
+                          id = c("Site", "Pod Type"))
+
+admin_doses_table_export <- dcast(admin_doses_table_export,
+                           Site ~ variable + `Pod Type`, value.var = "value")
+
+
+# Export schedule summary, schedule breakdown, and cumulative administed doses to excel file
+export_list <- list("SchedSummary" = sched_summary,
+                    "SchedBreakdown" = sched_breakdown_cast,
+                    "CumDosesAdministered" = admin_doses_table_export)
+
+write_xlsx(export_list, path = paste0(user_directory, "/Schedule Data Export ", format(Sys.Date(), "%m%d%y"), ".xlsx"))
+
+
+# Determine NYS vs NYS patients based on zip code ----------------------------------
+nys_dose1_to_date <- sched_to_date %>%
+  filter(Status2 == "Arr" & Dose == 1) %>%
+  group_by(Site, `Pod Type`) %>%
+  summarize(TotalArrivals = n(),
+            NYSArrivals = sum(NYZip),
+            PercentInState = percent(NYSArrivals / TotalArrivals)) %>%
+  ungroup()
+
+nys_dose1_14days <- sched_to_date %>%
+  filter(Status2 == "Sch" & Dose == 1 & ApptDate <= (today + 13)) %>%
+  group_by(Site, `Pod Type`) %>%
+  summarize(TotalSchedAppts = n(),
+            NYSSched = sum(NYZip),
+            PercentInState = percent(NYSSched / TotalSchedAppts)) %>%
+  ungroup()
+
+
+# Walk-In stats for last 7 days ------------------------------------------
+# Determine daily walk-ins by pod type
+dose1_7day_walkins_type <- sched_to_date %>%
   filter(Status == "Arr" & Dose == 1 & ApptDate >= (today - 7) & ApptDate < today) %>%
   group_by(Site, `Pod Type`, Dose,
            ApptYear, WeekNum, ApptDate, DOW) %>%
-  summarize(TotalArrivals = n(),
-            WalkIns = sum(`Same Day?` == "Same day"),
-            WalkInPercent = WalkIns / TotalArrivals * 100)
+  summarize(DailyArrivals = n(),
+            DailyWalkIns = sum(`Same Day?` == "Same day"),
+            DailyWalkInPercent = DailyWalkIns / DailyArrivals * 100)
 
+# Determine daily walk-ins for each site
 dose1_7day_walkins_totals <- sched_to_date %>%
   filter(Status == "Arr" & Dose == 1 & ApptDate >= (today - 7) & ApptDate < today) %>%
   group_by(Site, Dose,
            ApptYear, WeekNum, ApptDate, DOW) %>%
   summarize(`Pod Type` = "All",
-            TotalArrivals = n(),
-            WalkIns = sum(`Same Day?` == "Same day"),
-            WalkInPercent = WalkIns / TotalArrivals * 100)
+            DailyArrivals = n(),
+            DailyWalkIns = sum(`Same Day?` == "Same day"),
+            DailyWalkInPercent = DailyWalkIns / DailyArrivals * 100)
 
-dose1_7day_walkins_totals <- dose1_7day_walkins_totals[ , colnames(dose1_7days_walkins_type)]
+# Reorder columns
+dose1_7day_walkins_totals <- dose1_7day_walkins_totals[ , colnames(dose1_7day_walkins_type)]
 
-dose1_7day_walkins_summary <- rbind(dose1_7days_walkins_type, dose1_7day_walkins_totals)
+# Combine daily walk-ins for each site by pod type and site total
+dose1_7day_walkins_summary <- rbind(dose1_7day_walkins_type, dose1_7day_walkins_totals)
 
 dose1_7day_walkins_summary <- dose1_7day_walkins_summary %>%
   ungroup()
 
+# Reorder rows based on site and pod type
 dose1_7day_walkins_summary <- dose1_7day_walkins_summary %>%
   mutate(Site = factor(Site, levels = sites, ordered = TRUE),
          `Pod Type` = factor(`Pod Type`, levels = pod_type, ordered = TRUE))
 
+# Calculate average walk-in volume and average walk-in percentage
 dose1_7day_walkins_avg <- dose1_7day_walkins_summary %>%
   group_by(Site, Dose, `Pod Type`) %>%
-  summarize(AvgWalkInVolume = mean(WalkIns),
-            AvgWalkInPercent = mean(WalkInPercent)) %>%
+  summarize(AvgWalkInVolume = sum(DailyWalkIns) / 7,
+            WalkInPercent = sum(DailyWalkIns) / sum(DailyArrivals)) %>%
   ungroup()
 
 cast_dose1_7day_walkins_volume <- dcast(dose1_7day_walkins_summary,
-                                         Site + `Pod Type` ~ ApptDate, value.var = "WalkIns")
+                                        Site + `Pod Type` ~ ApptDate, value.var = "DailyWalkIns")
 
 cast_dose1_7day_all_volume <- dcast(dose1_7day_walkins_summary,
-                                        Site + `Pod Type` ~ ApptDate, value.var = "TotalArrivals")
+                                    Site + `Pod Type` ~ ApptDate, value.var = "DailyArrivals")
 
-cast_dose1_7day_walkins_percent <- dcast(dose1_7day_walkins_summary,
-                                        Site + `Pod Type` ~ ApptDate, value.var = "WalkInPercent")
-
-cast_dose1_7day_walkins_volume_summary <- left_join(cast_dose1_7day_walkins_volume, 
-                                             dose1_7day_walkins_avg[ , c("Site", "Pod Type", "AvgWalkInVolume")],
+cast_dose1_7day_walkins_summary <- left_join(cast_dose1_7day_walkins_volume, 
+                                             dose1_7day_walkins_avg[ , c("Site", "Pod Type", "AvgWalkInVolume", "WalkInPercent")],
                                              by = c("Site" = "Site", "Pod Type" = "Pod Type"))
 
-cast_dose1_7day_walkins_percent_summary <- left_join(cast_dose1_7day_walkins_percent, 
-                                                    dose1_7day_walkins_avg[ , c("Site", "Pod Type", "AvgWalkInPercent")],
-                                                    by = c("Site" = "Site", "Pod Type" = "Pod Type"))
 
 walkins_list <- list("WalkInVolume" = cast_dose1_7day_walkins_volume,
                      "TotalArrivals" = cast_dose1_7day_all_volume,
-                     "WalkInVolumeSummary" = cast_dose1_7day_walkins_volume_summary,
-                     "WalkInPercentSummary" = cast_dose1_7day_walkins_percent_summary)
+                     "WalkInSummary" = cast_dose1_7day_walkins_summary)
 
-# Export walk in data to excel file
-write_xlsx(walkins_list, path = paste0(user_directory, "/WalkIns Last 7 Days as of ", today, ".xlsx"))
-
+if (update_walkins) {
+  # Export walk in data to excel file
+  write_xlsx(walkins_list, path = paste0(user_directory, "/WalkIns Last 7 Days as of ", today, ".xlsx"))
+  
+}
