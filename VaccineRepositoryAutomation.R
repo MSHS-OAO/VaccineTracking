@@ -11,6 +11,7 @@
 #install.packages("stringr")
 #install.packages("formattable")
 # install.packages("ggpubr")
+#install.package(zipcodeR)
 
 #Analysis for weekend discharge tracking
 library(readxl)
@@ -28,6 +29,7 @@ library(reshape2)
 library(knitr)
 library(kableExtra)
 library(rmarkdown)
+library(zipcodeR)
 
 # Set working directory and select raw data ----------------------------
 rm(list = ls())
@@ -58,6 +60,9 @@ sites <- c("MSB", "MSBI", "MSH", "MSM", "MSQ", "MSW")
 
 # Pod type order
 pod_type <- c("Employee", "Patient", "All")
+
+# NY zip codes
+ny_zips <- search_state("NY")
 
 
 # Import raw data from Epic
@@ -111,7 +116,7 @@ if (update_repo) {
   #                               format(max(sched_repo$ApptDate), "%m%d%y"), 
   #                               " on ", format(Sys.time(), "%m%d%y %H%M"), ".xlsx"))
   
-  saveRDS(sched_repo, paste0(user_directory, "/Sched Repo ", 
+  saveRDS(sched_repo, paste0(user_directory, "/Sched w Zip Repo ", 
                              format(min(sched_repo$ApptDate), "%m%d%y"), " to ", 
                              format(max(sched_repo$ApptDate), "%m%d%y"), 
                              " on ", format(Sys.time(), "%m%d%y %H%M"), ".rds"))
@@ -124,20 +129,6 @@ if (update_repo) {
   
 }
 
-# saveRDS(sched_repo, file = paste0(user_directory, "/Sched Repo ", 
-#                                   format(min(sched_repo$ApptDate), "%m%d%y"), " to ", 
-#                                   format(max(sched_repo$ApptDate), "%m%d%y"), 
-#                                   " on ", format(Sys.time(), "%m%d%y %H%M"), ".rds"))
-# 
-# a <- readRDS(file = choose.files(default = user_path, caption = "Select schedule repository"))
-# 
-# test_a <- a %>%
-#   group_by(Department, ApptDate, `Appt Status`) %>%
-#   summarize(Count = n())
-# 
-# test_sched_repo <- sched_repo %>%
-#   group_by(Department, ApptDate, `Appt Status`) %>%
-#   summarize(Count = n())
 
 # Format and analyze schedule to date for dashboards
 sched_to_date <- sched_repo
@@ -153,7 +144,8 @@ sched_to_date[is.na(sched_to_date$`Pod Type`), "Pod Type"] <- "Patient"
 sched_to_date <- sched_to_date %>%
   mutate(Status = ifelse(`Appt Status` %in% c("Arrived", "Comp", "Checked Out"), "Arr", `Appt Status`),
          WeekNum = format(ApptDate, "%U"),
-         DOW = weekdays(ApptDate))
+         DOW = weekdays(ApptDate),
+         NYZip = substr(`ZIP Code`, 1, 5) %in% ny_zips$zipcode)
 
 # Start summarizing data
 dose1_7days_walkins_type <- sched_to_date %>%
