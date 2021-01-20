@@ -49,14 +49,14 @@ initial_run <- FALSE
 update_repo <- TRUE
 
 # Reports to add to repo
-num_new_reports <- 1
+num_new_reports <- 2
 
 # Determine whether or not to update walk-in analysis
 update_walkins <- FALSE
 
 # Import reference data for site and pod mappings
-site_mappings <- read_excel(paste0(user_directory, "/Reference 2021-01-15.xlsx"), sheet = "Site Mappings")
-pod_mappings <- read_excel(paste0(user_directory, "/Reference 2021-01-15.xlsx"), sheet = "Pod Mappings Simple")
+site_mappings <- read_excel(paste0(user_directory, "/Reference 2021-01-20.xlsx"), sheet = "Site Mappings")
+pod_mappings <- read_excel(paste0(user_directory, "/Reference 2021-01-20.xlsx"), sheet = "Pod Mappings Simple")
 
 # Store today's date
 today <- Sys.Date()
@@ -261,13 +261,6 @@ admin_doses_table_export <- dcast(admin_doses_table_export,
                            Site ~ variable + `Pod Type`, value.var = "value")
 
 
-# Export schedule summary, schedule breakdown, and cumulative administed doses to excel file
-export_list <- list("SchedSummary" = sched_summary,
-                    "SchedBreakdown" = sched_breakdown_cast,
-                    "CumDosesAdministered" = admin_doses_table_export)
-
-write_xlsx(export_list, path = paste0(user_directory, "/Schedule Data Export ", format(Sys.Date(), "%m%d%y"), ".xlsx"))
-
 
 # Determine NYS vs NYS patients based on zip code ----------------------------------
 nys_dose1_to_date <- sched_to_date %>%
@@ -295,7 +288,7 @@ dose1_7day_walkins_type <- sched_to_date %>%
            ApptYear, WeekNum, ApptDate, DOW) %>%
   summarize(DailyArrivals = n(),
             DailyWalkIns = sum(`Same Day?` == "Same day"),
-            DailyWalkInPercent = DailyWalkIns / DailyArrivals * 100)
+            DailyWalkInPercent = percent(DailyWalkIns / DailyArrivals))
 
 # Determine daily walk-ins for each site
 dose1_7day_walkins_totals <- sched_to_date %>%
@@ -305,7 +298,7 @@ dose1_7day_walkins_totals <- sched_to_date %>%
   summarize(`Pod Type` = "All",
             DailyArrivals = n(),
             DailyWalkIns = sum(`Same Day?` == "Same day"),
-            DailyWalkInPercent = DailyWalkIns / DailyArrivals * 100)
+            DailyWalkInPercent = percent(DailyWalkIns / DailyArrivals))
 
 # Reorder columns
 dose1_7day_walkins_totals <- dose1_7day_walkins_totals[ , colnames(dose1_7day_walkins_type)]
@@ -321,30 +314,46 @@ dose1_7day_walkins_summary <- dose1_7day_walkins_summary %>%
   mutate(Site = factor(Site, levels = sites, ordered = TRUE),
          `Pod Type` = factor(`Pod Type`, levels = pod_type, ordered = TRUE))
 
+dose1_7day_walkins_summary <- dose1_7day_walkins_summary %>%
+  arrange(Site, `Pod Type`)
+
 # Calculate average walk-in volume and average walk-in percentage
 dose1_7day_walkins_avg <- dose1_7day_walkins_summary %>%
   group_by(Site, Dose, `Pod Type`) %>%
   summarize(AvgWalkInVolume = sum(DailyWalkIns) / 7,
-            WalkInPercent = sum(DailyWalkIns) / sum(DailyArrivals)) %>%
+            WalkInPercent = percent(sum(DailyWalkIns) / sum(DailyArrivals))) %>%
   ungroup()
 
-cast_dose1_7day_walkins_volume <- dcast(dose1_7day_walkins_summary,
+cast_dose1_7day_walkins_arr <- dcast(dose1_7day_walkins_summary,
                                         Site + `Pod Type` ~ ApptDate, value.var = "DailyWalkIns")
 
-cast_dose1_7day_all_volume <- dcast(dose1_7day_walkins_summary,
+cast_dose1_7day_all_arr <- dcast(dose1_7day_walkins_summary,
                                     Site + `Pod Type` ~ ApptDate, value.var = "DailyArrivals")
 
-cast_dose1_7day_walkins_summary <- left_join(cast_dose1_7day_walkins_volume, 
+cast_dose1_7day_walkins_stats <- melt(dose1_7day_walkins_summary,
+                                      id.vars = c("Site", "Pod Type", "ApptDate"),
+                                      measure.vars = c("DailyWalkIns", "DailyArrivals", "DailyWalkInPercent"))
+
+cast_dose1_7day_walkins_stats <- dcast(cast_dose1_7day_walkins_stats,
+                                       Site + `Pod Type` ~ variable + ApptDate,
+                                       value.var ="value")
+
+cast_dose1_7day_walkins_stats <- left_join(cast_dose1_7day_walkins_stats, 
                                              dose1_7day_walkins_avg[ , c("Site", "Pod Type", "AvgWalkInVolume", "WalkInPercent")],
                                              by = c("Site" = "Site", "Pod Type" = "Pod Type"))
 
+cast_melt_test <- melt(dose1_7day_walkins_summary,
+                       id.vars = c("Site", "Pod Type", "ApptDate"),
+                       measure.vars = c("DailyWalkIns", "DailyArrivals", "DailyWalkInPercent"))
 
-walkins_list <- list("WalkInVolume" = cast_dose1_7day_walkins_volume,
-                     "TotalArrivals" = cast_dose1_7day_all_volume,
-                     "WalkInSummary" = cast_dose1_7day_walkins_summary)
 
-if (update_walkins) {
-  # Export walk in data to excel file
-  write_xlsx(walkins_list, path = paste0(user_directory, "/WalkIns Last 7 Days as of ", today, ".xlsx"))
-  
-}
+# Export key data tables to Excel for reporting ----------------------------------------
+# Export schedule summary, schedule breakdown, and cumulative administed doses to excel file
+export_list <- list("SchedSummary" = sched_summary,
+                    "SchedBreakdown" = sched_breakdown_cast,
+                    "CumDosesAdministered" = admin_doses_table_export,
+                    "DailyArrivals_7Days" = cast_dose1_7day_all_arr,
+                    "DailyWalkIns_7Days" = cast_dose1_7day_walkins_arr,
+                    "WalkInsStats_7Days" = cast_dose1_7day_walkins_stats)
+
+write_xlsx(export_list, path = paste0(user_directory, "/Schedule Data Export ", format(Sys.Date(), "%m%d%y"), " v2.xlsx"))
