@@ -352,8 +352,38 @@ cast_melt_test <- melt(dose1_7day_walkins_summary,
 export_list <- list("SchedSummary" = sched_summary,
                     "SchedBreakdown" = sched_breakdown_cast,
                     "CumDosesAdministered" = admin_doses_table_export,
-                    "DailyArrivals_7Days" = cast_dose1_7day_all_arr,
-                    "DailyWalkIns_7Days" = cast_dose1_7day_walkins_arr,
+                    "1stDoseArrivals_7Days" = cast_dose1_7day_all_arr,
+                    "1stDoseWalkIns_7Days" = cast_dose1_7day_walkins_arr,
                     "WalkInsStats_7Days" = cast_dose1_7day_walkins_stats)
 
-write_xlsx(export_list, path = paste0(user_directory, "/Schedule Data Export ", format(Sys.Date(), "%m%d%y"), " v2.xlsx"))
+write_xlsx(export_list, path = paste0(user_directoyeahry, "/Schedule Data Export ", format(Sys.Date(), "%m%d%y"), ".xlsx"))
+
+
+# No show analysis -------------------------------------
+dose1_noshows_daily <- sched_to_date %>%
+  filter(ApptDate < today & Dose == 1) %>%
+  group_by(Site, `Pod Type`, ApptDate) %>%
+  summarize(NoShow = sum(Status2 == "No Show"),
+            Total = sum(Status2 == "No Show") + sum(Status2 == "Arr"),
+            NoShowPercent = NoShow / Total)
+
+dose1_noshows_summary <- sched_to_date %>%
+  filter(ApptDate < today & Dose == 1) %>%
+  group_by(Site, `Pod Type`) %>%
+  summarize(StartDate = min(ApptDate),
+            EndDate = max(ApptDate),
+            NoShow = sum(Status2 == "No Show"),
+            Total = sum(Status2 == "No Show") + sum(Status2 == "Arr"),
+            NoShowPercent = percent(NoShow / Total))
+
+msh_noshow <- sched_to_date %>%
+  filter(Status2 == "No Show" & `Pod Type` == "Patient" & Dose == 1 & Site == "MSH")
+
+dose1_noshows_summary2 <- sched_to_date %>%
+  filter(ApptDate < today & Dose == 1) %>%
+  group_by(Site, `Pod Type`, `MOUNT SINAI HEALTH SYSTEM`) %>%
+  summarize(NoShow = sum(Status2 == "No Show"),
+            Total = sum(Status2 == "No Show") + sum(Status2 == "Arr"),
+            NoShowPercent = NoShow / Total)
+
+dose2_sched <- sched_to_date 
