@@ -356,7 +356,7 @@ export_list <- list("SchedSummary" = sched_summary,
                     "1stDoseWalkIns_7Days" = cast_dose1_7day_walkins_arr,
                     "WalkInsStats_7Days" = cast_dose1_7day_walkins_stats)
 
-write_xlsx(export_list, path = paste0(user_directoyeahry, "/Schedule Data Export ", format(Sys.Date(), "%m%d%y"), ".xlsx"))
+write_xlsx(export_list, path = paste0(user_directory, "/Schedule Data Export ", format(Sys.Date(), "%m%d%y"), ".xlsx"))
 
 
 # No show analysis -------------------------------------
@@ -386,4 +386,5 @@ dose1_noshows_summary2 <- sched_to_date %>%
             Total = sum(Status2 == "No Show") + sum(Status2 == "Arr"),
             NoShowPercent = NoShow / Total)
 
-dose2_sched <- sched_to_date 
+# dose2_sched <- sched_to_date %>%
+  
