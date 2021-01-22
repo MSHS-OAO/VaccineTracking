@@ -367,8 +367,8 @@ dose1_noshows_daily <- sched_to_date %>%
             Total = sum(Status2 == "No Show") + sum(Status2 == "Arr"),
             NoShowPercent = NoShow / Total)
 
-dose1_noshows_summary <- sched_to_date %>%
-  filter(ApptDate < today & Dose == 1) %>%
+dose1_noshows_3days <- sched_to_date %>%
+  filter(ApptDate < today & ApptDate >= (today - 3) & Dose == 1) %>%
   group_by(Site, `Pod Type`) %>%
   summarize(StartDate = min(ApptDate),
             EndDate = max(ApptDate),
@@ -376,15 +376,55 @@ dose1_noshows_summary <- sched_to_date %>%
             Total = sum(Status2 == "No Show") + sum(Status2 == "Arr"),
             NoShowPercent = percent(NoShow / Total))
 
-msh_noshow <- sched_to_date %>%
-  filter(Status2 == "No Show" & `Pod Type` == "Patient" & Dose == 1 & Site == "MSH")
 
-dose1_noshows_summary2 <- sched_to_date %>%
-  filter(ApptDate < today & Dose == 1) %>%
-  group_by(Site, `Pod Type`, `MOUNT SINAI HEALTH SYSTEM`) %>%
-  summarize(NoShow = sum(Status2 == "No Show"),
-            Total = sum(Status2 == "No Show") + sum(Status2 == "Arr"),
-            NoShowPercent = NoShow / Total)
+# Analysis of employee and patient pods ------------------------
+sched_to_date <- sched_to_date %>%
+  mutate(EmployeeSite = ifelse(is.na(`MOUNT SINAI HEALTH SYSTEM`), "Not Employee",
+                               ifelse(str_detect(`MOUNT SINAI HEALTH SYSTEM`, " "), 
+                                      substr(`MOUNT SINAI HEALTH SYSTEM`, 1, str_locate(`MOUNT SINAI HEALTH SYSTEM`, " ") - 1),
+                                      `MOUNT SINAI HEALTH SYSTEM`)),
+         ApptClassification = ifelse(EmployeeSite == "Not Employee", "Not MSHS Employee", "MSHS Employee"))
 
-# dose2_sched <- sched_to_date %>%
-  
+pod_type_breakdown_weekly <- sched_to_date %>%
+  filter(ApptDate < today & Dose == 1 & Status2 == "Arr") %>%
+  group_by(Site, `Pod Type`,`Provider/Resource`, ApptYear, WeekNum, EmployeeSite, ApptClassification) %>%
+  summarize(Count = n())
+
+pod_type_breakdown_total <- sched_to_date %>%
+  filter(ApptDate < today & Dose == 1 & Status2 == "Arr") %>%
+  group_by(Site, `Pod Type`,`Provider/Resource`, EmployeeSite, ApptClassification) %>%
+  summarize(Total = n())
+
+pod_type_breakdown_cast <- dcast(pod_type_breakdown_weekly,
+                                 Site + `Pod Type` + `Provider/Resource` + EmployeeSite + ApptClassification ~ ApptYear + WeekNum,
+                                 value.var = "Count")
+
+pod_type_breakdown_cast <- left_join(pod_type_breakdown_cast, pod_type_breakdown_total,
+                                     by = c("Site" = "Site",
+                                            "Pod Type" = "Pod Type",
+                                            "Provider/Resource" = "Provider/Resource",
+                                            "EmployeeSite" = "EmployeeSite",
+                                            "ApptClassification" = "ApptClassification"))
+
+pod_type_appt_type_summary <- pod_type_breakdown_cast %>%
+  group_by(Site, `Pod Type`, `Provider/Resource`, ApptClassification) %>%
+  summarize(Total = sum(Total))
+
+pod_type_appt_type_summary_cast <- dcast(pod_type_appt_type_summary,
+                                         Site + `Pod Type` + `Provider/Resource` ~ ApptClassification,
+                                         value.var = "Total")
+
+pod_type_appt_type_summary_cast <- pod_type_appt_type_summary_cast %>%
+  mutate(ErrorVolume = ifelse(`Pod Type` == "Employee", `Not MSHS Employee`, `MSHS Employee`),
+           PercentApptError = percent(ErrorVolume / (`MSHS Employee` + `Not MSHS Employee`)))
+
+write_xlsx(pod_type_appt_type_summary_cast, paste0(user_directory, "/Pod and Appt Type Conflicts ", Sys.Date(),".xlsx"))
+
+
+employee_test <- sched_to_date %>%
+  filter(Status2 == "Arr" & !is.na(`MOUNT SINAI HEALTH SYSTEM`) & Dose == 1) 
+
+test <- sched_to_date %>%
+  filter(Status2 == "Arr" & Dose == 1) %>%
+  group_by(Site, `Pod Type`, `MOUNT SINAI HEALTH SYSTEM`, ApptClassification) %>%
+  summarize(Count = n())
