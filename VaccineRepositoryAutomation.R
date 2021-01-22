@@ -36,9 +36,9 @@ rm(list = ls())
 
 # Determine path for working directory
 if (list.files("J://") == "Presidents") {
-  user_directory <- "J:/Presidents/HSPI-PM/Operations Analytics and Optimization/Projects/System Operations/COVID Vaccine/ScheduleData/Automation Files"
+  user_directory <- "J:/Presidents/HSPI-PM/Operations Analytics and Optimization/Projects/System Operations/COVID Vaccine"
 } else {
-  user_directory <- "J:/deans/Presidents/HSPI-PM/Operations Analytics and Optimization/Projects/System Operations/COVID Vaccine/ScheduleData/Automation Files"
+  user_directory <- "J:/deans/Presidents/HSPI-PM/Operations Analytics and Optimization/Projects/System Operations/COVID Vaccine"
 }
 
 # Set path for file selection
@@ -55,8 +55,8 @@ num_new_reports <- 2
 update_walkins <- FALSE
 
 # Import reference data for site and pod mappings
-site_mappings <- read_excel(paste0(user_directory, "/Reference 2021-01-20.xlsx"), sheet = "Site Mappings")
-pod_mappings <- read_excel(paste0(user_directory, "/Reference 2021-01-20.xlsx"), sheet = "Pod Mappings Simple")
+site_mappings <- read_excel(paste0(user_directory, "/ScheduleData/Automation Ref 2021-01-20.xlsx"), sheet = "Site Mappings")
+pod_mappings <- read_excel(paste0(user_directory, "/ScheduleData/Automation Ref 2021-01-20.xlsx"), sheet = "Pod Mappings Simple")
 
 # Store today's date
 today <- Sys.Date()
@@ -82,25 +82,25 @@ ny_zips <- search_state("NY")
 # Import raw data from Epic
 if (update_repo) {
   if (initial_run) {
-    raw_df <- read_excel(choose.files(default = user_path, caption = "Select initial Epic schedule"), 
+    raw_df <- read_excel(choose.files(default = paste0(user_directory, "/ScheduleData/*.*"), caption = "Select initial Epic schedule"), 
                                   col_names = TRUE, na = c("", "NA"))
     } else {
       # sched_repo <- read_excel(choose.files(default = user_path, caption = "Select schedule repository"), 
       #                       col_names = TRUE, na = c("", "NA"))
-      sched_repo <- readRDS(choose.files(default = user_path, caption = "Select schedule repository"))
+      sched_repo <- readRDS(choose.files(default = paste0(user_directory, "/R_Sched_AM_Repo/*.*"), caption = "Select schedule repository"))
       
       # Convert appointment date in schedule repository from posixct to date
       sched_repo <- sched_repo %>%
         mutate(ApptDate = date(ApptDate))
       
       if (num_new_reports == 1) {
-        raw_df <- read_excel(choose.files(default = user_path, caption = "Select current Epic schedule"), 
+        raw_df <- read_excel(choose.files(default = paste0(user_directory, "/ScheduleData/*.*"), caption = "Select current Epic schedule"), 
                                        col_names = TRUE, na = c("", "NA"))
       } else if (num_new_reports == 2) {
-        raw_df1 <- read_excel(choose.files(default = user_path, caption = "Select 1st new Epic schedule"), 
+        raw_df1 <- read_excel(choose.files(default = paste0(user_directory, "/ScheduleData/*.*"), caption = "Select 1st new Epic schedule"), 
                               col_names = TRUE, na = c("", "NA"))
         
-        raw_df2 <- read_excel(choose.files(default = user_path, caption = "Select 2nd new Epic schedule"), 
+        raw_df2 <- read_excel(choose.files(default = paste0(user_directory, "/ScheduleData/*.*"), caption = "Select 2nd new Epic schedule"), 
                               col_names = TRUE, na = c("", "NA"))
         
         raw_df <- rbind(raw_df1, raw_df2)
@@ -139,14 +139,14 @@ if (update_repo) {
     sched_repo <- rbind(sched_repo, new_sched)
   }
 
-  saveRDS(sched_repo, paste0(user_directory, "/Sched w Zip Repo ",
+  saveRDS(sched_repo, paste0(user_directory, "/R_Sched_AM_Repo/Sched ",
                              format(min(sched_repo$ApptDate), "%m%d%y"), " to ",
                              format(max(sched_repo$ApptDate), "%m%d%y"),
                              " on ", format(Sys.time(), "%m%d%y %H%M"), ".rds"))
   
 } else {
 
-  sched_repo <- readRDS(choose.files(default = user_path, caption = "Select schedule repository"))
+  sched_repo <- readRDS(choose.files(default = paste0(user_directory, "/R_Sched_AM_Repo/*.*"), caption = "Select schedule repository"))
   
 }
 
@@ -356,7 +356,7 @@ export_list <- list("SchedSummary" = sched_summary,
                     "1stDoseWalkIns_7Days" = cast_dose1_7day_walkins_arr,
                     "WalkInsStats_7Days" = cast_dose1_7day_walkins_stats)
 
-write_xlsx(export_list, path = paste0(user_directory, "/Schedule Data Export ", format(Sys.Date(), "%m%d%y"), ".xlsx"))
+write_xlsx(export_list, path = paste0(user_directory, "/R_Sched_Analysis_AM_Export/Sched Data Export ", format(Sys.Date(), "%m%d%y"), ".xlsx"))
 
 
 # No show analysis -------------------------------------
@@ -418,13 +418,13 @@ pod_type_appt_type_summary_cast <- pod_type_appt_type_summary_cast %>%
   mutate(ErrorVolume = ifelse(`Pod Type` == "Employee", `Not MSHS Employee`, `MSHS Employee`),
            PercentApptError = percent(ErrorVolume / (`MSHS Employee` + `Not MSHS Employee`)))
 
-write_xlsx(pod_type_appt_type_summary_cast, paste0(user_directory, "/Pod and Appt Type Conflicts ", Sys.Date(),".xlsx"))
-
-
-employee_test <- sched_to_date %>%
-  filter(Status2 == "Arr" & !is.na(`MOUNT SINAI HEALTH SYSTEM`) & Dose == 1) 
-
-test <- sched_to_date %>%
-  filter(Status2 == "Arr" & Dose == 1) %>%
-  group_by(Site, `Pod Type`, `MOUNT SINAI HEALTH SYSTEM`, ApptClassification) %>%
-  summarize(Count = n())
+# write_xlsx(pod_type_appt_type_summary_cast, paste0(user_directory, "/Pod and Appt Type Conflicts ", Sys.Date(),".xlsx"))
+# 
+# 
+# employee_test <- sched_to_date %>%
+#   filter(Status2 == "Arr" & !is.na(`MOUNT SINAI HEALTH SYSTEM`) & Dose == 1) 
+# 
+# test <- sched_to_date %>%
+#   filter(Status2 == "Arr" & Dose == 1) %>%
+#   group_by(Site, `Pod Type`, `MOUNT SINAI HEALTH SYSTEM`, ApptClassification) %>%
+#   summarize(Count = n())
