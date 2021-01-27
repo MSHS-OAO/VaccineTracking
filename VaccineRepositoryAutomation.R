@@ -46,7 +46,7 @@ user_path <- paste0(user_directory, "\\*.*")
 
 # Determine whether or not to update an existing repo
 initial_run <- FALSE
-update_repo <- FALSE
+update_repo <- TRUE
 
 # Reports to add to repo
 num_new_reports <- 2
@@ -239,7 +239,7 @@ sched_7days_format_jm <- left_join(sched_7days_all_sites_dates, sched_7days_summ
 
 # Summarize schedule for next vaccine inventory cycle for daily schedule target analysis ----------------------
 # Determine dates in this inventory cycle based on today's date and Tuesday of the next week
-sched_inv_cycle_dates <- seq(today, floor_date(today, unit = "week", week_start = 7) + 9, by = 1)
+sched_inv_cycle_dates <- seq(today, floor_date(today, unit = "week", week_start = 7) + 16, by = 1)
 
 sched_inv_cycle_dates_rep <- rep(sched_inv_cycle_dates, length(unique(sched_to_date$Site)))
 
@@ -310,7 +310,7 @@ sched_inv_cycle_sys_summary_cast <- dcast(sched_inv_cycle_sys_summary,
                                            value.var = "Count")
 
 sched_inv_cycle_sys_summary_cast <- sched_inv_cycle_sys_summary_cast %>%
-  arrange(App)
+  arrange(ApptDate)
 
 sched_inv_cycle_sys_jm <- sched_inv_cycle_sys_summary_cast
 
@@ -600,7 +600,10 @@ daily_max <- daily_arrivals %>%
 
 # Determine patients with multiple first dose appointments -----------------
 dose1_sch_arr <- sched_to_date %>%
-  filter(Status2 %in% c("Arr", "Sch") & Dose == 1)
+  filter(Status2 %in% c("Arr", "Sch") & 
+           Dose == 1 & 
+           `Pod Type` == "Patient" & 
+           ApptDate >= as.Date("1/1/21", format = "%m/%d/%y"))
 
 
 dose1_sch_arr_summary <- dose1_sch_arr %>%
@@ -608,4 +611,12 @@ dose1_sch_arr_summary <- dose1_sch_arr %>%
   summarize(Count = n())
 
 mult_dose1 <- dose1_sch_arr_summary %>%
+  filter(Count > 1)
+
+
+dose1_sch_arr_summary_v2 <- dose1_sch_arr %>%
+  group_by(MRN, Dose) %>%
+  summarize(Count = n())
+
+mult_dose1_v2 <- dose1_sch_arr_summary_v2 %>%
   filter(Count > 1)
