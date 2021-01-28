@@ -125,7 +125,8 @@ if (update_repo) {
            ApptYear = year(Date),
            ApptMonth = month(Date),
            ApptDay = day(Date),
-           ApptWeek = week(Date))
+           ApptWeek = week(Date),
+           Department = ifelse(str_detect(Department, ","), substr(Department, 1, str_locate(Department, ",") - 1), Department))
   
   # Determine dates in new report
   current_dates <- sort(unique(new_sched$ApptDate))
