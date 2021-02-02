@@ -174,11 +174,16 @@ sched_to_date <- sched_to_date %>%
          DOW = weekdays(ApptDate),
          NYZip = substr(`ZIP Code`, 1, 5) %in% ny_zips$zipcode)
 
+# Pull out appointment type from appointment notes
+appt_notes <- as.data.frame(unique(sched_to_date[ , c("Appt Notes", "Dose")]))
+
+appt_notes <- appt_notes %>%
+  mutate(ApptType = str_detect(str_to_lower(`Appt Notes`), "Dose 1"))
+
 # Summarize schedule data for possible stratifications and export
 sched_summary <- sched_to_date %>%
   group_by(Site, `Pod Type`, Dose, ApptDate, NYZip, Status2) %>%
   summarize(Count = n())
-
 
 # Summarize schedule breakdown for next 2 weeks and export ------------------------------
 sched_breakdown <- sched_to_date %>%
@@ -621,3 +626,53 @@ dose1_sch_arr_summary_v2 <- dose1_sch_arr %>%
 
 mult_dose1_v2 <- dose1_sch_arr_summary_v2 %>%
   filter(Count > 1)
+
+# Determine patients with second doses scheduled with no first dose appt
+mrn_arrivals <- sched_to_date %>%
+  group_by(MRN) %>%
+  summarize(Arr_Dose1 = sum(Dose == 1 & Status2 == "Arr"),
+            Arr_Dose2 = sum(Dose == 2 & Status2 == "Arr"))
+
+mrn_dose2_site <- sched_to_date %>%
+  filter(Dose == 2 & Status2 == "Arr") %>%
+  select(MRN, Site) %>%
+  mutate(Dose2_Site = Site)
+
+mrn_dose2_site <- unique(mrn_dose2_site)
+
+mrn_dose2_site <- mrn_dose2_site %>%
+  mutate(DuplMRN = duplicated(MRN))
+
+mrn_arrivals <- left_join(mrn_arrivals, mrn_dose2_site[ , c("MRN", "Dose2_Site")], by = c("MRN" = "MRN"))
+
+arr_dose2_nodose1 <- mrn_arrivals %>%
+  filter(Arr_Dose2 > 0 & Arr_Dose1 == 0)
+
+arr_dose2_nodose1 <- arr_dose2_nodose1[ , c("Dose2_Site", "MRN", "Arr_Dose2", "Arr_Dose1")]
+
+arr_dose2_nodose1 <- arr_dose2_nodose1 %>%
+  arrange(Dose2_Site, -Arr_Dose2)
+
+write_xlsx(arr_dose2_nodose1, path = paste0(user_directory, 
+                                            "/AdHoc/Dose2 Arrivals No Dose1 for BC ", 
+                                                          format(Sys.time(), "%m%d%y"), ".xlsx"))
+
+# arr_dose2_nodose1 <- left_join(arr_dose2_nodose1, mrn_dose2)
+#   
+# mrn_dose_stats <- sched_to_date %>%
+#   filter(Status2 %in% c("Arr", "Sch")) %>%
+#   group_by(MRN, Dose) %>%
+#   summarize(Count = n()) %>%
+#   ungroup()
+# 
+# mrn_dose_stats <- mrn_dose_stats %>%
+#   mutate(Dose = ifelse(Dose == 1, "Dose1", "Dose2"))
+# 
+# mrn_dose_stats <- dcast(mrn_dose_stats, MRN ~ Dose, value.var = "Count")
+# 
+# mrn_dose_stats <- mrn_dose_stats %>%
+#   mutate(Dose1 = ifelse(is.na(Dose1), 0, Dose1),
+#          Dose2 = ifelse(is.na(Dose2), 0, Dose2),
+#          MultDose1 = Dose1 > 1,
+#          Dose1NoDose2 = (Dose1 >= 1 & Dose2 == 0),
+#          Dose2NoDose1 = (Dose2 >= 1 & Dose1 == 0))
