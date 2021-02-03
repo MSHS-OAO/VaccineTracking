@@ -48,9 +48,6 @@ user_path <- paste0(user_directory, "\\*.*")
 initial_run <- FALSE
 update_repo <- TRUE
 
-# Reports to add to repo
-num_new_reports <- 1
-
 # Determine whether or not to update walk-in analysis
 update_walkins <- FALSE
 
@@ -79,55 +76,61 @@ pod_type <- c("Employee", "Patient", "All")
 ny_zips <- search_state("NY")
 
 
-sched_repo <- readRDS(choose.files(default = paste0(user_directory, "/R_Sched_AM_Repo/*.*"), caption = "Select schedule repository"))
+# Import raw data from Epic
+if (update_repo) {
+  if (initial_run) {
+    raw_df <- read_excel(choose.files(default = paste0(user_directory, "/ScheduleData/*.*"), caption = "Select initial Epic schedule"), 
+                         col_names = TRUE, na = c("", "NA"))
+  } else {
+    # sched_repo <- read_excel(choose.files(default = user_path, caption = "Select schedule repository"), 
+    #                       col_names = TRUE, na = c("", "NA"))
+    sched_repo <- readRDS(choose.files(default = paste0(user_directory, "/R_Sched_AM_Repo/*.*"), caption = "Select schedule repository"))
+    
+    # Convert appointment date in schedule repository from posixct to date
+    sched_repo <- sched_repo %>%
+      mutate(ApptDate = date(ApptDate))
 
-raw_epic_csv <- read.csv(choose.files(default = paste0(user_directory, "/Auto Epic Sched Reports/*.*"),
-                                      caption = "Select current Epic schedule"), stringsAsFactors = FALSE)
-
-raw_df1 <- read_excel(choose.files(default = paste0(user_directory, "/ScheduleData/*.*"), caption = "Select 1st new Epic schedule"), 
-                      col_names = TRUE, na = c("", "NA"))
-
-new_sched <- raw_df1
+    raw_df <- read.csv(choose.files(default = paste0(user_directory, "/Auto Epic Sched Reports/*.*"), 
+                                    caption = "Select current Epic schedule"), stringsAsFactors = FALSE, 
+                       check.names = FALSE)
+  }
   
-# Remove test patient
-new_sched <- new_sched[new_sched$Patient != "Patient, Test", ]
+  new_sched <- raw_df
   
-# Create column with vaccine location
-new_sched <- new_sched %>% 
-  mutate(Mfg = ifelse(is.na(Immunizations), "Unknown", ifelse(str_detect(Immunizations, "Pfizer"), "Pfizer", "Moderna")),
-         Dose = ifelse(str_detect(Type, "DOSE 1"), 1, ifelse(str_detect(Type, "DOSE 2"), 2, NA)),
-         ApptDate = date(Date),
-         ApptYear = year(Date),
-         ApptMonth = month(Date),
-         ApptDay = day(Date),
-         ApptWeek = week(Date))
+  # Remove test patient
+  new_sched <- new_sched[new_sched$Patient != "Patient, Test", ]
   
-# Determine dates in new report
-current_dates <- sort(unique(new_sched$ApptDate))
+  # Create column with vaccine location
+  new_sched <- new_sched %>% 
+    mutate(Mfg = ifelse(is.na(Immunizations), "Unknown", ifelse(str_detect(Immunizations, "Pfizer"), "Pfizer", "Moderna")),
+           Dose = ifelse(str_detect(Type, "DOSE 1"), 1, ifelse(str_detect(Type, "DOSE 2"), 2, NA)),
+           ApptDate = date(Date),
+           ApptYear = year(Date),
+           ApptMonth = month(Date),
+           ApptDay = day(Date),
+           ApptWeek = week(Date),
+           Department = ifelse(str_detect(Department, ","), substr(Department, 1, str_locate(Department, ",") - 1), Department))
+  
+  # Determine dates in new report
+  current_dates <- sort(unique(new_sched$ApptDate))
+  
+  if (initial_run) {
+    sched_repo <- new_sched
+  } else {
+    # Update schedule repository by removing duplicate dates and adding data from new report
+    sched_repo <- sched_repo %>%
+      filter(!(ApptDate >= current_dates[1]))
+    sched_repo <- rbind(sched_repo, new_sched)
+  }
+  
+  saveRDS(sched_repo, paste0(user_directory, "/R_Sched_AM_Repo/Sched ",
+                             format(min(sched_repo$ApptDate), "%m%d%y"), " to ",
+                             format(max(sched_repo$ApptDate), "%m%d%y"),
+                             " on ", format(Sys.time(), "%m%d%y %H%M"), ".rds"))
+  
+} else {
+  
+  sched_repo <- readRDS(choose.files(default = paste0(user_directory, "/R_Sched_AM_Repo/*.*"), caption = "Select schedule repository"))
+  
+}
 
-# Update schedule repository by removing duplicate dates and adding data from new report
-sched_repo <- sched_repo %>%
-  filter(!(ApptDate >= current_dates[1]))
-sched_repo <- rbind(sched_repo, new_sched)
-
-# Format and analyze schedule to date for dashboards ---------------------------
-sched_to_date <- sched_repo
-
-# Format new epic report
-new_epic_sched <- raw_epic_csv %>%
-  mutate(DOB = as.POSIXct(DOB, format = "%m/%d/%Y"),
-         Made.Date = as.POSIXct(Made.Date, format = "%m/%d/%y"),
-         Date = as.POSIXct(Date, format = "%m/%d/%Y"),
-         Appt.Time = as.POSIXct(paste("1899-12-31", Appt.Time), format = "%Y-%m-%d %H:%M %p"),
-         Mfg = ifelse(is.na(Immunizations), "Unknown", ifelse(str_detect(Immunizations, "Pfizer"), "Pfizer", "Moderna")),
-         Dose = ifelse(str_detect(Type, "DOSE 1"), 1, ifelse(str_detect(Type, "DOSE 2"), 2, NA)),
-         ApptDate = date(Date),
-         ApptYear = year(Date),
-         ApptMonth = month(Date),
-         ApptDay = day(Date),
-         ApptWeek = week(Date),
-         Canc.Date = NULL)
-
-colnames(new_epic_sched) <- colnames(new_sched)
-
-test_df <- rbind(sched_to_date, new_sched, new_epic_sched)
