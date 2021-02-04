@@ -90,7 +90,7 @@ if (update_repo) {
     sched_repo <- sched_repo %>%
       mutate(ApptDate = date(ApptDate))
 
-    raw_df <- read.csv(choose.files(default = paste0(user_directory, "/Auto Epic Sched Reports/*.*"), 
+    raw_df <- read.csv(choose.files(default = paste0(user_directory, "/Epic Auto Report Sched All Status/*.*"), 
                                     caption = "Select current Epic schedule"), stringsAsFactors = FALSE, 
                        check.names = FALSE)
   }
@@ -102,7 +102,12 @@ if (update_repo) {
   
   # Create column with vaccine location
   new_sched <- new_sched %>% 
-    mutate(Mfg = ifelse(is.na(Immunizations), "Unknown", ifelse(str_detect(Immunizations, "Pfizer"), "Pfizer", "Moderna")),
+    mutate(DOB = as.Date(DOB, format = "%m/%d/%Y"),
+           `Made Date` = as.Date(`Made Date`, format = "%m/%d/%y"),
+           Date = as.Date(Date, format = "%m/%d/%Y"),
+           `Appt Time` = as.POSIXct(paste("1899-12-31 ", `Appt Time`), tz = "", format = "%Y-%m-%d %H:%M %p"),
+           `ZIP Code` = substr(`ZIP Code`, 2, nchar(`ZIP Code`)), 
+           Mfg = ifelse(is.na(Immunizations), "Unknown", ifelse(str_detect(Immunizations, "Pfizer"), "Pfizer", "Moderna")),
            Dose = ifelse(str_detect(Type, "DOSE 1"), 1, ifelse(str_detect(Type, "DOSE 2"), 2, NA)),
            ApptDate = date(Date),
            ApptYear = year(Date),
@@ -134,3 +139,300 @@ if (update_repo) {
   
 }
 
+# Format and analyze schedule to date for dashboards ---------------------------
+sched_to_date <- sched_repo
+
+sched_to_date <- left_join(sched_to_date, site_mappings,
+                           by = c("Department" = "Department"))
+
+sched_to_date <- left_join(sched_to_date, pod_mappings[ , c("Provider", "Pod Type")],
+                           by = c("Provider/Resource" = "Provider"))
+
+sched_to_date[is.na(sched_to_date$`Pod Type`), "Pod Type"] <- "Patient"
+
+sched_to_date <- sched_to_date %>%
+  mutate(Status = ifelse(`Appt Status` %in% c("Arrived", "Comp", "Checked Out"), "Arr", `Appt Status`), # Group various arrival statuses as "Arr"
+         # Status2 = ifelse(ApptDate == today & Status == "Arr", "Sch", # Categorize any arrivals from today as scheduled for easier manipulation
+         #                  ifelse(ApptDate < today & Status == "Sch", "No Show", Status)), # Categorize any appts still in sch status from prior days as no shows
+         # Modify status 2 for running report late in evening instead of early morning
+         Status2 = ifelse(ApptDate <= (today - 1) & Status == "Sch", "No Show", Status), # Categorize any appts still in sch status from prior days as no shows
+         WeekNum = format(ApptDate, "%U"),
+         DOW = weekdays(ApptDate),
+         NYZip = substr(`ZIP Code`, 1, 5) %in% ny_zips$zipcode)
+
+# Pull out appointment type from appointment notes
+appt_notes <- as.data.frame(unique(sched_to_date[ , c("Appt Notes", "Dose")]))
+
+appt_notes <- appt_notes %>%
+  mutate(ApptType = str_detect(str_to_lower(`Appt Notes`), "Dose 1"))
+
+# Summarize schedule data for possible stratifications and export
+sched_summary <- sched_to_date %>%
+  group_by(Site, `Pod Type`, Dose, ApptDate, NYZip, Status2) %>%
+  summarize(Count = n())
+
+# Summarize schedule breakdown for next 2 weeks and export ------------------------------
+sched_breakdown <- sched_to_date %>%
+  filter(Status2 %in% c("Arr", "Sch") & ApptDate >= (today - 1) & ApptDate <= (today + 14)) %>%
+  group_by(Dose, `Pod Type`, Site, Status2, ApptDate) %>%
+  summarize(Count = n()) %>%
+  ungroup()
+
+sched_breakdown <- sched_breakdown[order(sched_breakdown$Dose,
+                                         sched_breakdown$`Pod Type`,
+                                         sched_breakdown$Site), ]
+
+sched_breakdown_cast <- dcast(sched_breakdown,
+                              Dose + `Pod Type` + Site ~ Status2 + ApptDate,
+                              value.var = "Count")
+
+
+# Summarize schedule for next vaccine inventory cycle for daily schedule target analysis ----------------------
+# Determine dates in this inventory cycle based on today's date and Tuesday of the next week
+sched_inv_cycle_dates <- seq(today, floor_date(today, unit = "week", week_start = 7) + 16, by = 1)
+
+sched_inv_cycle_dates_rep <- rep(sched_inv_cycle_dates, length(unique(sched_to_date$Site)))
+
+# Determine schedule for each site within this inventory cycle's date range
+sched_inv_cycle_pod_type_site <- sched_to_date %>%
+  filter(ApptDate %in% sched_inv_cycle_dates & Status2 == "Sch") %>%
+  group_by(Site, Dose, `Pod Type`, ApptDate) %>%
+  summarize(Count = n()) %>%
+  ungroup()
+
+sched_inv_cycle_all_pods_site <- sched_to_date %>%
+  filter(ApptDate %in% sched_inv_cycle_dates & Status2 == "Sch") %>%
+  group_by(Site, Dose, ApptDate) %>%
+  summarize(`Pod Type` = "Total",
+            Count = n()) %>%
+  ungroup()
+
+sched_inv_cycle_all_pods_site <- sched_inv_cycle_all_pods_site[ , colnames(sched_inv_cycle_pod_type_site)]
+
+sched_inv_cycle_pod_order <- c("Total", "Employee", "Patient")
+
+sched_inv_cycle_site_summary <- rbind(sched_inv_cycle_pod_type_site, sched_inv_cycle_all_pods_site)
+
+sched_inv_cycle_site_summary <- sched_inv_cycle_site_summary %>%
+  mutate(`Pod Type` = factor(`Pod Type`, levels = sched_inv_cycle_pod_order, ordered = TRUE)) %>%
+  arrange(Site, ApptDate, `Pod Type`, Dose)
+
+sched_inv_cycle_site_summary_cast <- dcast(sched_inv_cycle_site_summary,
+                                           Site + ApptDate ~ Dose + `Pod Type`,
+                                           value.var = "Count")
+
+
+sched_inv_cycle_sites <- sort(rep(unique(sched_to_date$Site), length(sched_inv_cycle_dates)))
+
+sched_inv_cycle_all_sites_dates <- data.frame("Site" = sched_inv_cycle_sites,
+                                              "ApptDate" = sched_inv_cycle_dates_rep,
+                                              stringsAsFactors = FALSE)
+
+sched_inv_cycle_sites_jm <- left_join(sched_inv_cycle_all_sites_dates, sched_inv_cycle_site_summary_cast,
+                                      by = c("Site" = "Site",
+                                             "ApptDate" = "ApptDate"))
+
+# Determine schedule across system within this inventory cycle's date range
+sched_inv_cycle_pod_type_sys <- sched_to_date %>%
+  filter(ApptDate %in% sched_inv_cycle_dates & Status2 == "Sch") %>%
+  group_by(Dose, `Pod Type`, ApptDate) %>%
+  summarize(Count = n()) %>%
+  ungroup()
+
+sched_inv_cycle_all_pods_sys <- sched_to_date %>%
+  filter(ApptDate %in% sched_inv_cycle_dates & Status2 == "Sch") %>%
+  group_by(Dose, ApptDate) %>%
+  summarize(`Pod Type` = "Total",
+            Count = n()) %>%
+  ungroup()
+
+sched_inv_cycle_all_pods_sys <- sched_inv_cycle_all_pods_sys[ , colnames(sched_inv_cycle_pod_type_sys)]
+
+sched_inv_cycle_sys_summary <- rbind(sched_inv_cycle_pod_type_sys, sched_inv_cycle_all_pods_sys)
+
+sched_inv_cycle_sys_summary <- sched_inv_cycle_sys_summary %>%
+  mutate(`Pod Type` = factor(`Pod Type`, levels = sched_inv_cycle_pod_order, ordered = TRUE),
+         DOW = wday(ApptDate, label = TRUE, abbr = TRUE)) %>%
+  arrange(ApptDate, `Pod Type`, Dose)
+
+sched_inv_cycle_sys_summary_cast <- dcast(sched_inv_cycle_sys_summary,
+                                          DOW + ApptDate ~ Dose + `Pod Type`,
+                                          value.var = "Count")
+
+sched_inv_cycle_sys_summary_cast <- sched_inv_cycle_sys_summary_cast %>%
+  arrange(ApptDate)
+
+sched_inv_cycle_sys_jm <- sched_inv_cycle_sys_summary_cast
+
+
+# Summarize doses administered to date --------------------------------
+# Summarize administered doses prior to today and stratify by site and pod type
+admin_doses_site_pod_type <- sched_to_date %>%
+  filter(Status2 == "Arr") %>%
+  group_by(Site, `Pod Type`, Dose) %>%
+  summarize(DateRange = paste0(format(min(ApptDate), "%m/%d/%y"), "-", format(max(ApptDate), "%m/%d/%y")),
+            Count = n()) %>%
+  ungroup()
+
+# Summarize administered doses prior to today and stratify only by site
+admin_doses_site_all_pods <- sched_to_date %>%
+  filter(Status2 == "Arr") %>%
+  group_by(Site, Dose) %>%
+  summarize("Pod Type" = "All",
+            DateRange = paste0(format(min(ApptDate), "%m/%d/%y"), "-", format(max(ApptDate), "%m/%d/%y")),
+            Count = n()) %>%
+  ungroup()
+
+admin_doses_site_all_pods <- admin_doses_site_all_pods[ , colnames(admin_doses_site_pod_type)]
+
+# Summarize administered doses across system and stratify by pod type
+admin_doses_system_pod_type <- sched_to_date %>%
+  filter(Status2 == "Arr") %>%
+  group_by(`Pod Type`, Dose) %>%
+  summarize(Site = "MSHS", DateRange = paste0(format(min(ApptDate), "%m/%d/%y"), "-", format(max(ApptDate), "%m/%d/%y")),
+            Count = n()) %>%
+  ungroup()
+
+admin_doses_system_pod_type <- admin_doses_system_pod_type[ , colnames(admin_doses_site_pod_type)]
+
+# Summarize administered doses across system
+admin_doses_system_all_pods <- sched_to_date %>%
+  filter(Status2 == "Arr") %>%
+  group_by(Dose) %>%
+  summarize(Site = "MSHS", 
+            `Pod Type` = "All",
+            DateRange = paste0(format(min(ApptDate), "%m/%d/%y"), "-", format(max(ApptDate), "%m/%d/%y")),
+            Count = n()) %>%
+  ungroup()
+
+admin_doses_system_all_pods <- admin_doses_system_all_pods[ , colnames(admin_doses_site_pod_type)]
+
+# Combine administered data by pod type, across pods, and across system
+admin_doses_summary <- rbind(admin_doses_site_pod_type, 
+                             admin_doses_site_all_pods,
+                             admin_doses_system_pod_type,
+                             admin_doses_system_all_pods)
+
+admin_doses_summary <- admin_doses_summary %>%
+  mutate(Dose = ifelse(Dose == 1, "Dose1", "Dose2"))
+
+admin_2nd_dose_remaining <- dcast(admin_doses_summary,
+                                  Site + `Pod Type` ~ Dose, value.var = "Count")
+
+
+admin_2nd_dose_remaining <- admin_2nd_dose_remaining %>%
+  mutate(RemainingDose2 = Dose1 - Dose2,
+         Site = factor(Site, levels = sites, ordered = TRUE),
+         `Pod Type` = factor(`Pod Type`, levels = pod_type, ordered = TRUE))
+
+admin_2nd_dose_remaining <- admin_2nd_dose_remaining[order(admin_2nd_dose_remaining$Site, 
+                                                           admin_2nd_dose_remaining$`Pod Type`), ]
+
+admin_doses_table_export <- melt(admin_2nd_dose_remaining, 
+                                 id = c("Site", "Pod Type"))
+
+admin_doses_table_export <- dcast(admin_doses_table_export,
+                                  Site ~ variable + `Pod Type`, value.var = "value")
+
+
+
+# Determine NYS vs NYS patients based on zip code ----------------------------------
+nys_dose1_to_date <- sched_to_date %>%
+  filter(Status2 == "Arr" & Dose == 1) %>%
+  group_by(Site, `Pod Type`) %>%
+  summarize(TotalArrivals = n(),
+            NYSArrivals = sum(NYZip),
+            PercentInState = percent(NYSArrivals / TotalArrivals)) %>%
+  ungroup()
+
+nys_dose1_14days <- sched_to_date %>%
+  filter(Status2 == "Sch" & Dose == 1 & ApptDate <= (today + 13)) %>%
+  group_by(Site, `Pod Type`) %>%
+  summarize(TotalSchedAppts = n(),
+            NYSSched = sum(NYZip),
+            PercentInState = percent(NYSSched / TotalSchedAppts)) %>%
+  ungroup()
+
+
+# Walk-In stats for last 7 days ------------------------------------------
+# Determine daily walk-ins by pod type
+dose1_7day_walkins_type <- sched_to_date %>%
+  filter(Status == "Arr" & Dose == 1 & ApptDate > (today - 7) & ApptDate <= today) %>%
+  group_by(Site, `Pod Type`, Dose,
+           ApptYear, WeekNum, ApptDate, DOW) %>%
+  summarize(DailyArrivals = n(),
+            DailyWalkIns = sum(`Same Day?` == "Same day"),
+            DailyWalkInPercent = percent(DailyWalkIns / DailyArrivals))
+
+# Determine daily walk-ins for each site
+dose1_7day_walkins_totals <- sched_to_date %>%
+  filter(Status == "Arr" & Dose == 1 & ApptDate > (today - 7) & ApptDate <= today) %>%
+  group_by(Site, Dose,
+           ApptYear, WeekNum, ApptDate, DOW) %>%
+  summarize(`Pod Type` = "All",
+            DailyArrivals = n(),
+            DailyWalkIns = sum(`Same Day?` == "Same day"),
+            DailyWalkInPercent = percent(DailyWalkIns / DailyArrivals))
+
+# Reorder columns
+dose1_7day_walkins_totals <- dose1_7day_walkins_totals[ , colnames(dose1_7day_walkins_type)]
+
+# Combine daily walk-ins for each site by pod type and site total
+dose1_7day_walkins_summary <- rbind(dose1_7day_walkins_type, dose1_7day_walkins_totals)
+
+dose1_7day_walkins_summary <- dose1_7day_walkins_summary %>%
+  ungroup()
+
+# Reorder rows based on site and pod type
+dose1_7day_walkins_summary <- dose1_7day_walkins_summary %>%
+  mutate(Site = factor(Site, levels = sites, ordered = TRUE),
+         `Pod Type` = factor(`Pod Type`, levels = pod_type, ordered = TRUE))
+
+dose1_7day_walkins_summary <- dose1_7day_walkins_summary %>%
+  arrange(Site, `Pod Type`)
+
+# Calculate average walk-in volume and average walk-in percentage
+dose1_7day_walkins_avg <- dose1_7day_walkins_summary %>%
+  group_by(Site, Dose, `Pod Type`) %>%
+  summarize(AvgWalkInVolume = sum(DailyWalkIns) / 7,
+            WalkInPercent = percent(sum(DailyWalkIns) / sum(DailyArrivals))) %>%
+  ungroup()
+
+cast_dose1_7day_walkins_arr <- dcast(dose1_7day_walkins_summary,
+                                     Site + `Pod Type` ~ ApptDate, value.var = "DailyWalkIns")
+
+cast_dose1_7day_all_arr <- dcast(dose1_7day_walkins_summary,
+                                 Site + `Pod Type` ~ ApptDate, value.var = "DailyArrivals")
+
+cast_dose1_7day_walkins_stats <- melt(dose1_7day_walkins_summary,
+                                      id.vars = c("Site", "Pod Type", "ApptDate"),
+                                      measure.vars = c("DailyWalkIns", "DailyArrivals", "DailyWalkInPercent"))
+
+cast_dose1_7day_walkins_stats <- dcast(cast_dose1_7day_walkins_stats,
+                                       Site + `Pod Type` ~ variable + ApptDate,
+                                       value.var ="value")
+
+cast_dose1_7day_walkins_stats <- left_join(cast_dose1_7day_walkins_stats, 
+                                           dose1_7day_walkins_avg[ , c("Site", "Pod Type", "AvgWalkInVolume", "WalkInPercent")],
+                                           by = c("Site" = "Site", "Pod Type" = "Pod Type"))
+
+cast_melt_test <- melt(dose1_7day_walkins_summary,
+                       id.vars = c("Site", "Pod Type", "ApptDate"),
+                       measure.vars = c("DailyWalkIns", "DailyArrivals", "DailyWalkInPercent"))
+
+
+# Export key data tables to Excel for reporting ----------------------------------------
+# Export schedule summary, schedule breakdown, and cumulative administed doses to excel file
+export_list <- list("SchedSummary" = sched_summary,
+                    "SchedBreakdown" = sched_breakdown_cast,
+                    # "Sched_Targets_7Days" = sched_7days_format_jm,
+                    "Sched_InvCycle_Site" = sched_inv_cycle_sites_jm,
+                    "Sched_InvCycle_Sys" = sched_inv_cycle_sys_jm,
+                    "CumDosesAdministered" = admin_doses_table_export,
+                    "1stDoseArrivals_7Days" = cast_dose1_7day_all_arr,
+                    "1stDoseWalkIns_7Days" = cast_dose1_7day_walkins_arr,
+                    "WalkInsStats_7Days" = cast_dose1_7day_walkins_stats)
+
+write_xlsx(export_list, path = paste0(user_directory, 
+                                      "/R_Sched_Analysis_AM_Export/Test New Sched Data Export ", 
+                                      format(Sys.time(), "%m%d%y %H%M"), ".xlsx"))
