@@ -59,7 +59,7 @@ sched_repo <- sched_repo %>%
 sched_repo <- sched_repo[ , c(1:10, 33, 11:32)]
 
 # Export repository to new .RDS 
-saveRDS(sched_repo, paste0(user_directory, "/R_Sched_AM_Repo/Sched ",
+saveRDS(sched_repo, paste0(user_directory, "/R_Sched_AM_Repo/Sched w Canc Date ",
                            format(min(sched_repo$ApptDate), "%m%d%y"), " to ",
                            format(max(sched_repo$ApptDate), "%m%d%y"),
                            " on ", format(Sys.time(), "%m%d%y %H%M"), ".rds"))
