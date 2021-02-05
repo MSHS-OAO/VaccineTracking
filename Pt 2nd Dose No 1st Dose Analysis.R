@@ -109,8 +109,8 @@ sched_hist_outlook[is.na(sched_hist_outlook$`Pod Type`), "Pod Type"] <- "Patient
 
 sched_hist_outlook <- sched_hist_outlook %>%
   mutate(Status = ifelse(`Appt Status` %in% c("Arrived", "Comp", "Checked Out"), "Arr", `Appt Status`), # Group various arrival statuses as "Arr"
-         Status2 = ifelse(ApptDate == (today - 1) & Status == "Arr", "Sch", # Categorize any arrivals from today as scheduled for easier manipulation; using "today - 1" since this is 1 day behind
-                          ifelse(ApptDate < (today - 1) & Status == "Sch", "No Show", Status)), # Categorize any appts still in sch status from prior days as no shows; using "today - 1" since this is 1 day behind
+         Status2 = ifelse(ApptDate == (today) & Status == "Arr", "Sch", # Categorize any arrivals from today as scheduled for easier manipulation; using "today - 1" since this is 1 day behind
+                          ifelse(ApptDate < (today) & Status == "Sch", "No Show", Status)), # Categorize any appts still in sch status from prior days as no shows; using "today - 1" since this is 1 day behind
          # Modify status 2 for running report late in evening instead of early morning
          # Status2 = ifelse(ApptDate == today & Status == "Arr", "Arr", # Categorize any arrivals from today as scheduled for easier manipulation
          #                  ifelse(ApptDate <= today & Status == "Sch", "No Show", Status)), # Categorize any appts still in sch status from prior days as no shows
@@ -201,7 +201,7 @@ error_export_list <- list("SummaryByPodType" = dose2_no_dose1_errors_pod_type,
                           "SummaryTable" = dose2_no_dose1_errors_summary_cast)
 
 write_xlsx(error_export_list, path = paste0(user_directory, 
-                                                        "/AdHoc/Dose2 No Dose1 Though Mar31 Error Summary 020321.xlsx"))
+                                                        "/AdHoc/Dose2 No Dose1 Though ", format(max(sched_hist_outlook$ApptDate), "%m%d%y"), " Error Summary 020321.xlsx"))
 
 # pt_noshowcan_dose1 <- dose2_no_dose1_by_site %>%
 #   filter(NoShowCan_Dose1) %>%
