@@ -55,8 +55,8 @@ num_new_reports <- 2
 update_walkins <- FALSE
 
 # Import reference data for site and pod mappings
-site_mappings <- read_excel(paste0(user_directory, "/ScheduleData/Automation Ref 2021-01-20.xlsx"), sheet = "Site Mappings")
-pod_mappings <- read_excel(paste0(user_directory, "/ScheduleData/Automation Ref 2021-01-20.xlsx"), sheet = "Pod Mappings Simple")
+site_mappings <- read_excel(paste0(user_directory, "/ScheduleData/Automation Ref 2021-02-05.xlsx"), sheet = "Site Mappings")
+pod_mappings <- read_excel(paste0(user_directory, "/ScheduleData/Automation Ref 2021-02-05.xlsx"), sheet = "Pod Mappings Simple")
 
 # Store today's date
 today <- Sys.Date()
@@ -676,3 +676,19 @@ write_xlsx(arr_dose2_nodose1, path = paste0(user_directory,
 #          MultDose1 = Dose1 > 1,
 #          Dose1NoDose2 = (Dose1 >= 1 & Dose2 == 0),
 #          Dose2NoDose1 = (Dose2 >= 1 & Dose1 == 0))
+
+# Look at appointments made on 2/4
+yest <- today - 1
+
+appt_start_date <- as.Date("2/5/21", format = "%m/%d/%y")
+appt_end_date <- as.Date("2/16/21", format = "%m/%d/%y")
+
+dose1_appts_made_yest_pod <- sched_to_date %>%
+  filter(Dose == 1 & `Made Date` == yest & Status2 == "Sch" & ApptDate >= appt_start_date & ApptDate <= appt_end_date) %>%
+  group_by(Site, `Provider/Resource`, `Pod Type`) %>%
+  summarize(Count = n())
+
+dose1_appts_made_yest_site <- sched_to_date %>%
+  filter(Dose == 1 & `Made Date` == yest & Status2 == "Sch" & ApptDate >= appt_start_date & ApptDate <= appt_end_date) %>%
+  group_by(Site, `Pod Type`) %>%
+  summarize(Count = n())  
