@@ -119,7 +119,8 @@ if (update_repo) {
   
   # Create column with vaccine location
   new_sched <- new_sched %>% 
-    mutate(Mfg = ifelse(is.na(Immunizations), "Unknown", ifelse(str_detect(Immunizations, "Pfizer"), "Pfizer", "Moderna")),
+    mutate(Mfg = ifelse(is.na(Immunizations), "Pfizer", # Assume any visits without immunization record are Pfizer
+                        ifelse(str_detect(Immunizations, "Moderna"), "Moderna", "Pfizer")),
            Dose = ifelse(str_detect(Type, "DOSE 1"), 1, ifelse(str_detect(Type, "DOSE 2"), 2, NA)),
            ApptDate = date(Date),
            ApptYear = year(Date),
@@ -165,8 +166,9 @@ sched_to_date[is.na(sched_to_date$`Pod Type`), "Pod Type"] <- "Patient"
 
 sched_to_date <- sched_to_date %>%
   mutate(Status = ifelse(`Appt Status` %in% c("Arrived", "Comp", "Checked Out"), "Arr", `Appt Status`), # Group various arrival statuses as "Arr"
-         Status2 = ifelse(ApptDate == today & Status == "Arr", "Sch", # Categorize any arrivals from today as scheduled for easier manipulation
-                          ifelse(ApptDate < today & Status == "Sch", "No Show", Status)), # Categorize any appts still in sch status from prior days as no shows
+         Status2 = ifelse(ApptDate < today & Status == "Arr" & (is.na(`Level Of Service`) | str_detect(`Level Of Service`, "ERRONEOUS")), "Left", # update appointment status logic to account for patients who arrive but don't receive vaccine
+                          ifelse(ApptDate == today & Status == "Arr", "Sch", # Categorize any arrivals from today as scheduled for easier manipulation
+                                 ifelse(ApptDate < today & Status == "Sch", "No Show", Status))), # Categorize any appts still in sch status from prior days as no shows
          # Modify status 2 for running report late in evening instead of early morning
          # Status2 = ifelse(ApptDate == today & Status == "Arr", "Arr", # Categorize any arrivals from today as scheduled for easier manipulation
          #                  ifelse(ApptDate <= today & Status == "Sch", "No Show", Status)), # Categorize any appts still in sch status from prior days as no shows
