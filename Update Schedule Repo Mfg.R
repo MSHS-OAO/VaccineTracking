@@ -76,10 +76,14 @@ sched_to_date <- sched_to_date %>%
   mutate(Status = ifelse(`Appt Status` %in% c("Arrived", "Comp", "Checked Out"), "Arr", `Appt Status`), # Group various arrival statuses as "Arr"
          Status2 = ifelse(ApptDate == today & Status == "Arr", "Sch", # Categorize any arrivals from today as scheduled for easier manipulation
                           ifelse(ApptDate < today & Status == "Sch", "No Show", Status)), # Categorize any appts still in sch status from prior days as no shows
-         Status3 = ifelse(Status == "Arr" & (is.na(`Level Of Service`) | str_detect(`Level Of Service`, "ERRONEOUS")), "Left", Status2),
+         Status3 = ifelse(ApptDate <today & Status == "Arr" & (is.na(`Level Of Service`) | str_detect(`Level Of Service`, "ERRONEOUS")), "Left", Status2),
          Test = Status2 == Status3,
          # Modify status 2 for running report late in evening instead of early morning
          # Status2 = ifelse(ApptDate == today & Status == "Arr", "Arr", # Categorize any arrivals from today as scheduled for easier manipulation
          #                  ifelse(ApptDate <= today & Status == "Sch", "No Show", Status)), # Categorize any appts still in sch status from prior days as no shows
          WeekNum = format(ApptDate, "%U"),
          DOW = weekdays(ApptDate))
+
+change_summary <- sched_to_date %>%
+  group_by(Status2, Status3, Test) %>%
+  summarize(Count = n())
