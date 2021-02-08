@@ -45,8 +45,8 @@ if (list.files("J://") == "Presidents") {
 user_path <- paste0(user_directory, "\\*.*")
 
 # Import reference data for site and pod mappings
-site_mappings <- read_excel(paste0(user_directory, "/ScheduleData/Automation Ref 2021-01-20.xlsx"), sheet = "Site Mappings")
-pod_mappings <- read_excel(paste0(user_directory, "/ScheduleData/Automation Ref 2021-01-20.xlsx"), sheet = "Pod Mappings Simple")
+site_mappings <- read_excel(paste0(user_directory, "/ScheduleData/Automation Ref 2021-02-05.xlsx"), sheet = "Site Mappings")
+pod_mappings <- read_excel(paste0(user_directory, "/ScheduleData/Automation Ref 2021-02-05.xlsx"), sheet = "Pod Mappings Simple")
 
 # Store today's date
 today <- Sys.Date()
@@ -71,10 +71,22 @@ ny_zips <- search_state("NY")
 # Import existing schedule repository
 sched_repo <- readRDS(choose.files(default = paste0(user_directory, "/R_Sched_AM_Repo/*.*"), caption = "Select schedule repository"))
 
+num_reports <- 2
 
-# Import schedule for few weeks
-raw_df <- read_excel(choose.files(default = paste0(user_directory, "/ScheduleData/*.*"), caption = "Select current Epic schedule"), 
-                     col_names = TRUE, na = c("", "NA"))
+# Import schedule for next few weeks
+if (num_reports == 2) {
+  raw_df_1 <- read_excel(choose.files(default = paste0(user_directory, "/ScheduleData/*.*"), caption = "Select first Epic schedule"), 
+                       col_names = TRUE, na = c("", "NA"))
+  raw_df_2 <- read_excel(choose.files(default = paste0(user_directory, "/ScheduleData/*.*"), caption = "Select second Epic schedule"), 
+                         col_names = TRUE, na = c("", "NA"))
+  raw_df <- rbind(raw_df_1, raw_df_2)
+} else if (num_reports == 1) {
+  raw_df <- read_excel(choose.files(default = paste0(user_directory, "/ScheduleData/*.*"), caption = "Select current Epic schedule"), 
+                       col_names = TRUE, na = c("", "NA"))
+} else {
+  raw_df <- NULL
+}
+
 
 # Modify and format columns in Epic schedule to match schedule repository
 new_sched <- raw_df %>%
@@ -110,7 +122,8 @@ sched_hist_outlook[is.na(sched_hist_outlook$`Pod Type`), "Pod Type"] <- "Patient
 sched_hist_outlook <- sched_hist_outlook %>%
   mutate(Status = ifelse(`Appt Status` %in% c("Arrived", "Comp", "Checked Out"), "Arr", `Appt Status`), # Group various arrival statuses as "Arr"
          Status2 = ifelse(ApptDate == (today) & Status == "Arr", "Sch", # Categorize any arrivals from today as scheduled for easier manipulation; using "today - 1" since this is 1 day behind
-                          ifelse(ApptDate < (today) & Status == "Sch", "No Show", Status)), # Categorize any appts still in sch status from prior days as no shows; using "today - 1" since this is 1 day behind
+                          ifelse(ApptDate < (today) & Status == "Sch", "No Show", # Categorize any appts still in sch status from prior days as no shows; using "today - 1" since this is 1 day behind
+                                 ifelse(Status == "Arr" & (is.na(`Level Of Service`) | str_detect(`Level Of Service`, "ERRONEOUS")), "Left", Status))), # Correct patient with Arr status but incomplete visit
          # Modify status 2 for running report late in evening instead of early morning
          # Status2 = ifelse(ApptDate == today & Status == "Arr", "Arr", # Categorize any arrivals from today as scheduled for easier manipulation
          #                  ifelse(ApptDate <= today & Status == "Sch", "No Show", Status)), # Categorize any appts still in sch status from prior days as no shows
@@ -141,19 +154,7 @@ dose2_no_dose1 <- pt_appt_summary %>%
                                   ifelse(Arr_Dose2 == 0 & Sch_Dose2 == 1, "Sched Dose 2 w/o Arr/Sch Dose 1 at MSHS",
                                          ifelse(Arr_Sch_Dose2 > 1, "Multiple Arr/Sched Dose 2 - Scheduling Error", "Other")))))
 
-  
-
-# test_df <- dose2_no_dose1 %>%
-#   group_by(Scenario) %>%
-#   summarize(Count = n())
-# 
-# scenarios_summary <- dose2_no_dose1 %>%
-#   filter(Scenario == "Other") %>%
-#   group_by(Arr_Dose2, NoShow_Canc_Dose1, Sch_Dose2) %>%
-#   summarize(Count = n())
-# 
-# scenarios_check <- unique(dose2_no_dose1[ , c("Scenario", "Arr_Sch_Dose1", "NoShow_Canc_Dose1", "Arr_Dose2", "Sch_Dose2", "Arr_Sch_Dose2")])
-  
+#Summarize dose 2 scenario statistics
 dose2_no_dose1_stats <- dose2_no_dose1 %>%
   group_by(Scenario) %>%
   summarize(Count = n())
@@ -161,34 +162,58 @@ dose2_no_dose1_stats <- dose2_no_dose1 %>%
 dose2_no_dose1_stats <- dose2_no_dose1_stats %>%
   mutate(Percent = percent(Count / sum(Count)))
 
-
-dose2_namedobid_site <- sched_hist_outlook %>%
+# Pull in additional patient details including MRN, CSN, Site, and Pod Type for each scheduled dose 2 appointment
+dose2_mrn_csn_site_pod <- sched_hist_outlook %>%
   filter(Dose == 2 & Status2 %in% c("Arr", "Sch")) %>%
-  select(NameDOBID, Site, `Pod Type`)
+  select(NameDOBID, MRN, CSN, Site, `Pod Type`)
 
-dose2_namedobid_site <- unique(dose2_namedobid_site)
+dose2_mrn_csn_site_pod <- unique(dose2_mrn_csn_site_pod)
 
-dose2_no_dose1_by_site <- left_join(dose2_no_dose1, dose2_namedobid_site,
-                                    by = c("NameDOBID" = "NameDOBID"))
+dose2_no_dose1_pt_detail <- left_join(dose2_no_dose1, dose2_mrn_csn_site_pod,
+                                      by = c("NameDOBID" = "NameDOBID"))
 
-dose2_no_dose1_by_site <- dose2_no_dose1_by_site %>%
-  mutate(DuplNameDOB = duplicated(NameDOBID))
+# Create flag to identify patients with multiple dose 2 locations
+pt_id_dose2_loc <- dose2_mrn_csn_site_pod %>%
+  select(NameDOBID, Site)
 
-# dose2_no_dose1_by_site <- dose2_no_dose1_by_site %>%
-#   mutate(Dose1NoShowCanc = NoShow_Canc_Dose1 > 0) %>%
-#   ungroup()
+pt_id_dose2_loc <- unique(pt_id_dose2_loc)
 
-colnames(dose2_no_dose1_by_site) <- c("Identifier", "LastName_FirstInitial", "DOB",
+pt_id_dose2_loc <- pt_id_dose2_loc %>%
+  mutate(MultDose2Loc = duplicated(NameDOBID))
+
+mult_dose2_loc <- pt_id_dose2_loc %>%
+  filter(MultDose2Loc) %>%
+  mutate(Site = NULL)
+
+dose2_no_dose1_pt_detail <- left_join(dose2_no_dose1_pt_detail, mult_dose2_loc,
+                            by = c("NameDOBID" = "NameDOBID"))
+
+# Create flag to identify patients with multiple charts
+pt_id_mrn <- as.data.frame(unique(sched_hist_outlook[ , c("NameDOBID", "MRN")]))
+
+pt_id_mrn <- pt_id_mrn %>%
+  mutate(DuplChart = duplicated(NameDOBID))
+
+dupl_charts <- unique(pt_id_mrn %>%
+                        filter(DuplChart) %>%
+                        mutate(MRN = NULL))
+
+dose2_no_dose1_pt_detail <- left_join(dose2_no_dose1_pt_detail, dupl_charts,
+                                       by = c("NameDOBID" = "NameDOBID"))
+
+
+# Ungroup dataframe and rename columns
+dose2_no_dose1_pt_detail <- dose2_no_dose1_pt_detail %>%
+  ungroup()
+
+colnames(dose2_no_dose1_pt_detail) <- c("Identifier", "LastName_FirstInitial", "DOB",
                                       "Count_ArrSch_Dose1", "Count_NoShowCanc_Dose1", 
                                       "Count_Arr_Dose2", "Count_Sch_Dose2", "Count_ArrSch_Dose2",
-                                      "Scenario", "Site", "PodType", "DuplIdentifier")
+                                      "Scenario", "MRN", "CSN", "Site", "PodType", 
+                                      "MultDose2Loc", "MultPtChart")
 
-dose2_no_dose1_errors_pod_type <- dose2_no_dose1_by_site %>%
-  group_by(Site, Scenario, PodType) %>%
-  summarize(Count = n()) %>%
-  arrange(Site, Scenario, PodType)
-
-dose2_no_dose1_errors_summary <- dose2_no_dose1_by_site %>%
+# Summarize data
+dose2_no_dose1_errors_summary <- dose2_no_dose1_pt_detail %>%
   group_by(Site, Scenario) %>%
   summarize(Count = n()) %>%
   arrange(Site, Scenario)
@@ -196,31 +221,67 @@ dose2_no_dose1_errors_summary <- dose2_no_dose1_by_site %>%
 dose2_no_dose1_errors_summary_cast <- dcast(dose2_no_dose1_errors_summary,
                                             Site ~ Scenario, value.var = "Count")
 
-error_export_list <- list("SummaryByPodType" = dose2_no_dose1_errors_pod_type,
-                          "SummaryBySite" = dose2_no_dose1_errors_summary,
-                          "SummaryTable" = dose2_no_dose1_errors_summary_cast)
+# Create data frame with patient details for each scenario
+receive_dose2_wo_dose1 <- dose2_no_dose1_pt_detail %>%
+  filter(Scenario == "Received Dose 2 w/o Arr/Sch Dose 1 at MSHS") %>%
+  select(Site, PodType, 
+         Identifier, LastName_FirstInitial, DOB, 
+         MRN, CSN, MultPtChart, MultDose2Loc,
+         Count_NoShowCanc_Dose1, Count_Arr_Dose2, Count_Sch_Dose2, Count_ArrSch_Dose2)
+
+sched_dose2_wo_dose1 <- dose2_no_dose1_pt_detail %>%
+  filter(Scenario == "Sched Dose 2 w/o Arr/Sch Dose 1 at MSHS") %>%
+  select(Site, PodType, 
+         Identifier, LastName_FirstInitial, DOB, 
+         MRN, CSN, MultPtChart, MultDose2Loc,
+         Count_NoShowCanc_Dose1, Count_Arr_Dose2, Count_Sch_Dose2, Count_ArrSch_Dose2)
+
+sched_dose2_noshow_dose1 <- dose2_no_dose1_pt_detail %>%
+  filter(Scenario == "No Show/Canc Dose 1 & Dose 2 Still On Sched") %>%
+  select(Site, PodType, 
+         Identifier, LastName_FirstInitial, DOB, 
+         MRN, CSN, MultPtChart, MultDose2Loc,
+         Count_NoShowCanc_Dose1, Count_Arr_Dose2, Count_Sch_Dose2, Count_ArrSch_Dose2)
+
+mult_dose2 <- dose2_no_dose1_pt_detail %>%
+  filter(Scenario == "Multiple Arr/Sched Dose 2 - Scheduling Error") %>%
+  select(Site, PodType, 
+         Identifier, LastName_FirstInitial, DOB, 
+         MRN, CSN, MultPtChart, MultDose2Loc,
+         Count_NoShowCanc_Dose1, Count_Arr_Dose2, Count_Sch_Dose2, Count_ArrSch_Dose2)
+
+
+# Create a dataframe with patients with multiple charts
+all_pt_charts <- left_join(pt_id_mrn[ , c("NameDOBID", "MRN")], dupl_charts,
+                           by = c("NameDOBID" = "NameDOBID"))
+
+all_pt_charts <- all_pt_charts %>%
+  arrange(DuplChart, NameDOBID)
+
+all_pt_dupl_charts <- all_pt_charts %>%
+  filter(DuplChart)
+
+all_pt_dupl_count <- all_pt_dupl_charts %>%
+  group_by(NameDOBID) %>%
+  summarize(Count_MRN = n())
+
+all_pt_dupl_charts <- left_join(all_pt_dupl_charts, all_pt_dupl_count,
+                                by = c("NameDOBID" = "NameDOBID"))
+
+all_pt_dupl_charts <- all_pt_dupl_charts %>%
+  arrange(Count_MRN, NameDOBID)
+
+# Create list of data to export
+
+error_export_list <- list("Dose2_Error_SummaryBySite" = dose2_no_dose1_errors_summary,
+                          "Dose2_Error_SummaryTable" = dose2_no_dose1_errors_summary_cast,
+                          "ReceivedDose2_NoDose1" = receive_dose2_wo_dose1,
+                          "SchedDose2_NoDose1" = sched_dose2_wo_dose1,
+                          "NoShowCancDose1_SchedDose2" = sched_dose2_noshow_dose1,
+                          "MultipleDose2Sched" = mult_dose2,
+                          "All_Pt_Mult_Charts" = all_pt_dupl_charts)
 
 write_xlsx(error_export_list, path = paste0(user_directory, 
-                                                        "/AdHoc/Dose2 No Dose1 Though ", format(max(sched_hist_outlook$ApptDate), "%m%d%y"), " Error Summary 020321.xlsx"))
+                                                        "/AdHoc/Dose2 No Dose1 Though ", format(max(sched_hist_outlook$ApptDate), "%m%d%y"), " Error Summary & Pt List ", format(Sys.Date(), "%m%d%y"), ".xlsx"))
 
-# pt_noshowcan_dose1 <- dose2_no_dose1_by_site %>%
-#   filter(NoShowCan_Dose1) %>%
-#   select(Site, PodType, LastName_FirstInitial, DOB, Count_ArrSch_Dose1, Count_NoShowCan_Dose1, Count_ArrSch_Dose2, DuplIdentifier) %>%
-#   arrange(Site, PodType, LastName_FirstInitial)
-# 
-# pt_nodose1 <- dose2_no_dose1_plus_site %>%
-#   filter(!NoShowCan_Dose1) %>%
-#   select(Site, PodType, LastName_FirstInitial, DOB, Count_ArrSch_Dose1, Count_NoShowCan_Dose1, Count_ArrSch_Dose2, DuplIdentifier) %>%
-#   arrange(Site, PodType, LastName_FirstInitial)
-# 
-# dupl_pts <- dose2_no_dose1_plus_site %>%
-#   filter(DuplIdentifier) %>%
-#   select(LastName_FirstInitial, DOB)
-# 
-# dupl_pts <- unique(dupl_pts)
-# 
-# export_list <- list("Dose1_NoShowsCancel" = pt_noshowcan_dose1,
-#                     "Dose1_NoneScheduled" = pt_nodose1,
-#                     "MultipleSites" = dupl_pts)
-# 
-# write_xlsx(export_list, paste0(user_directory, "/AdHoc/Dose2_NoDose1_Through_030221_Analysis_020321.xlsx"))
+

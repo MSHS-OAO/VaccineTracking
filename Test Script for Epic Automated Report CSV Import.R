@@ -52,8 +52,8 @@ update_repo <- TRUE
 update_walkins <- FALSE
 
 # Import reference data for site and pod mappings
-site_mappings <- read_excel(paste0(user_directory, "/ScheduleData/Automation Ref 2021-01-20.xlsx"), sheet = "Site Mappings")
-pod_mappings <- read_excel(paste0(user_directory, "/ScheduleData/Automation Ref 2021-01-20.xlsx"), sheet = "Pod Mappings Simple")
+site_mappings <- read_excel(paste0(user_directory, "/ScheduleData/Automation Ref 2021-02-05.xlsx"), sheet = "Site Mappings")
+pod_mappings <- read_excel(paste0(user_directory, "/ScheduleData/Automation Ref 2021-02-05.xlsx"), sheet = "Pod Mappings Simple")
 
 # Store today's date
 today <- Sys.Date()
@@ -128,7 +128,7 @@ if (update_repo) {
     sched_repo <- rbind(sched_repo, new_sched)
   }
   
-  saveRDS(sched_repo, paste0(user_directory, "/R_Sched_AM_Repo/Sched ",
+  saveRDS(sched_repo, paste0(user_directory, "/R_Sched_AM_Repo/Test Sched ",
                              format(min(sched_repo$ApptDate), "%m%d%y"), " to ",
                              format(max(sched_repo$ApptDate), "%m%d%y"),
                              " on ", format(Sys.time(), "%m%d%y %H%M"), ".rds"))
@@ -155,16 +155,11 @@ sched_to_date <- sched_to_date %>%
          # Status2 = ifelse(ApptDate == today & Status == "Arr", "Sch", # Categorize any arrivals from today as scheduled for easier manipulation
          #                  ifelse(ApptDate < today & Status == "Sch", "No Show", Status)), # Categorize any appts still in sch status from prior days as no shows
          # Modify status 2 for running report late in evening instead of early morning
-         Status2 = ifelse(ApptDate <= (today - 1) & Status == "Sch", "No Show", Status), # Categorize any appts still in sch status from prior days as no shows
+         Status2 = ifelse(ApptDate <= (today) & Status == "Sch", "No Show", Status), # Categorize any appts still in sch status from prior days as no shows
          WeekNum = format(ApptDate, "%U"),
          DOW = weekdays(ApptDate),
          NYZip = substr(`ZIP Code`, 1, 5) %in% ny_zips$zipcode)
 
-# Pull out appointment type from appointment notes
-appt_notes <- as.data.frame(unique(sched_to_date[ , c("Appt Notes", "Dose")]))
-
-appt_notes <- appt_notes %>%
-  mutate(ApptType = str_detect(str_to_lower(`Appt Notes`), "Dose 1"))
 
 # Summarize schedule data for possible stratifications and export
 sched_summary <- sched_to_date %>%
