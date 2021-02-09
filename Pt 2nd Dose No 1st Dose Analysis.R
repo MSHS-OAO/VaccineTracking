@@ -90,7 +90,7 @@ if (num_reports == 2) {
 
 # Modify and format columns in Epic schedule to match schedule repository
 new_sched <- raw_df %>%
-  mutate(Mfg = ifelse(is.na(Immunizations), "Unknown", ifelse(str_detect(Immunizations, "Pfizer"), "Pfizer", "Moderna")),
+  mutate(Mfg = ifelse(is.na(Immunizations), "Pfizer", ifelse(str_detect(Immunizations, "Moderna"), "Moderna", "Pfizer")),
          Dose = ifelse(str_detect(Type, "DOSE 1"), 1, ifelse(str_detect(Type, "DOSE 2"), 2, NA)),
          ApptDate = date(Date),
          ApptYear = year(Date),
@@ -132,17 +132,55 @@ sched_hist_outlook <- sched_hist_outlook %>%
          NYZip = substr(`ZIP Code`, 1, 5) %in% ny_zips$zipcode,
          # Create unique identifier with patient's last name, first initial of first name, and DOB since there are many patients with duplicate MRNs
          NameDOBID = ifelse(!(str_detect(Patient, ",\\s[A-Z|a-z]+")), paste(Patient, month(DOB), day(DOB), year(DOB)),
-                              paste(str_extract(Patient, "[A-Z|a-z]+,\\s[A-Z|a-z]{1}"), month(DOB), day(DOB), year(DOB))), 
+                              paste(str_extract(Patient, ".+,\\s[A-Z|a-z]{1}"), month(DOB), day(DOB), year(DOB))), 
          Name = substr(NameDOBID, 1, str_locate(NameDOBID, "[0-9]+\\s[0-9]+\\s[0-9]+") - 1),
          DOBDate = as.Date(paste0(month(DOB), "/", day(DOB), "/", year(DOB)), format = "%m/%d/%Y"),
          ScheduledBy = ifelse(str_detect(`Entry Person`, "ZOCDOC"), "ZocDoc",
                               ifelse(str_detect(`Entry Person`, "MYCHART"), "MyChart", "Employee")))
 
+
+# Create flag to identify patients with multiple charts
+pt_id_mrn <- as.data.frame(unique(sched_hist_outlook[ , c("NameDOBID", "MRN")]))
+
+pt_id_mrn <- pt_id_mrn %>%
+  mutate(DuplChart = duplicated(NameDOBID))
+
+dupl_charts <- unique(pt_id_mrn %>%
+                        filter(DuplChart) %>%
+                        mutate(MRN = NULL))
+
+
+# Summarize data by MRN
+mrn_appt_summary <- sched_hist_outlook %>%
+  group_by(MRN, NameDOBID) %>%
+  summarize(Arr_Sch_Dose1 = sum(Dose == 1 & Status2 %in% c("Arr", "Sch")),
+            NoShow_Canc_Dose1 = sum(Dose == 1 & Status2 %in% c("No Show", "Can", "Left")),
+            Arr_Dose2 = sum(Dose == 2 & Status2 %in% c("Arr")),
+            Sch_Dose2 = sum(Dose == 2 & Status2 %in% c("Sch")),
+            Arr_Sch_Dose2 = sum(Dose == 2 & Status2 %in% c("Arr", "Sch")))
+
+mrn_appt_summary_2 <- left_join(mrn_appt_summary, dupl_charts,
+                                by = c("NameDOBID" = "NameDOBID"))
+
+mrn_appt_summary_2 <- mrn_appt_summary_2 %>%
+  mutate(DuplChart = ifelse(is.na(DuplChart), FALSE, DuplChart))
+
+mrn_dose2_no_dose1 <- mrn_appt_summary %>%
+  filter(Arr_Sch_Dose1 == 0 & Arr_Sch_Dose2 > 0) %>%
+  mutate(Scenario = ifelse(Arr_Dose2 == 0 & NoShow_Canc_Dose1 >= 1 & Sch_Dose2 >= 1, "No Show/Canc Dose 1 & Dose 2 Still on Sched",
+                           ifelse(Arr_Dose2 == 1 & Sch_Dose2 == 0, "Received Dose 2 w/o Arr/Sch Dose 1 at MSHS",
+                                  ifelse(Arr_Dose2 == 0 & Sch_Dose2 == 1, "Sched Dose 2 w/o Arr/Sch Dose 1 at MSHS",
+                                         ifelse(Arr_Sch_Dose2 > 1, "Multiple Arr/Sched Dose 2 - Scheduling Error", "Other")))))
+
+mrn_dose2_no_dose1_stats <- mrn_dose2_no_dose1 %>%
+  group_by(Scenario) %>%
+  summarize(Count = n())
+
 # Summarize data by patient name and DOB identifier
 pt_appt_summary <- sched_hist_outlook %>%
   group_by(NameDOBID, Name, DOBDate) %>%
   summarize(Arr_Sch_Dose1 = sum(Dose == 1 & Status2 %in% c("Arr", "Sch")),
-            NoShow_Canc_Dose1 = sum(Dose == 1 & Status2 %in% c("No Show", "Can")),
+            NoShow_Canc_Dose1 = sum(Dose == 1 & Status2 %in% c("No Show", "Can", "Left")),
             Arr_Dose2 = sum(Dose == 2 & Status2 %in% c("Arr")),
             Sch_Dose2 = sum(Dose == 2 & Status2 %in% c("Sch")),
             Arr_Sch_Dose2 = sum(Dose == 2 & Status2 %in% c("Arr", "Sch")))
@@ -153,6 +191,7 @@ dose2_no_dose1 <- pt_appt_summary %>%
                            ifelse(Arr_Dose2 == 1 & Sch_Dose2 == 0, "Received Dose 2 w/o Arr/Sch Dose 1 at MSHS",
                                   ifelse(Arr_Dose2 == 0 & Sch_Dose2 == 1, "Sched Dose 2 w/o Arr/Sch Dose 1 at MSHS",
                                          ifelse(Arr_Sch_Dose2 > 1, "Multiple Arr/Sched Dose 2 - Scheduling Error", "Other")))))
+
 
 #Summarize dose 2 scenario statistics
 dose2_no_dose1_stats <- dose2_no_dose1 %>%
