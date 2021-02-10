@@ -155,7 +155,7 @@ sched_to_date <- sched_to_date %>%
          # Status2 = ifelse(ApptDate == today & Status == "Arr", "Sch", # Categorize any arrivals from today as scheduled for easier manipulation
          #                  ifelse(ApptDate < today & Status == "Sch", "No Show", Status)), # Categorize any appts still in sch status from prior days as no shows
          # Modify status 2 for running report late in evening instead of early morning
-         Status2 = ifelse(ApptDate <= (today) & Status == "Sch", "No Show", Status), # Categorize any appts still in sch status from prior days as no shows
+         Status2 = ifelse(ApptDate < (today) & Status == "Sch", "No Show", Status), # Categorize any appts still in sch status from prior days as no shows
          WeekNum = format(ApptDate, "%U"),
          DOW = weekdays(ApptDate),
          NYZip = substr(`ZIP Code`, 1, 5) %in% ny_zips$zipcode)
