@@ -75,6 +75,9 @@ sites <- c("MSB", "MSBI", "MSH", "MSM", "MSQ", "MSW", "MSHS")
 # Pod type order
 pod_type <- c("Employee", "Patient", "All")
 
+# Vaccine manufacturers
+mfg <- c("Pfizer", "Moderna")
+
 # NY zip codes
 ny_zips <- search_state("NY")
 
@@ -89,9 +92,9 @@ if (update_repo) {
       #                       col_names = TRUE, na = c("", "NA"))
       sched_repo <- readRDS(choose.files(default = paste0(user_directory, "/R_Sched_AM_Repo/*.*"), caption = "Select schedule repository"))
       
-      # Convert appointment date in schedule repository from posixct to date
-      sched_repo <- sched_repo %>%
-        mutate(ApptDate = date(ApptDate))
+      # # Convert appointment date in schedule repository from posixct to date
+      # sched_repo <- sched_repo %>%
+      #   mutate(ApptDate = date(ApptDate))
       
       if (num_new_reports == 1) {
         raw_df <- read_excel(choose.files(default = paste0(user_directory, "/ScheduleData/*.*"), caption = "Select current Epic schedule"), 
@@ -117,33 +120,33 @@ if (update_repo) {
   # Remove test patient
   new_sched <- new_sched[new_sched$Patient != "Patient, Test", ]
   
-  # Create column with vaccine location
-  new_sched <- new_sched %>% 
-    mutate(Mfg = ifelse(is.na(Immunizations), "Pfizer", # Assume any visits without immunization record are Pfizer
-                        ifelse(str_detect(Immunizations, "Moderna"), "Moderna", "Pfizer")),
-           Dose = ifelse(str_detect(Type, "DOSE 1"), 1, ifelse(str_detect(Type, "DOSE 2"), 2, NA)),
-           ApptDate = date(Date),
-           ApptYear = year(Date),
-           ApptMonth = month(Date),
-           ApptDay = day(Date),
-           ApptWeek = week(Date),
-           Department = ifelse(str_detect(Department, ","), substr(Department, 1, str_locate(Department, ",") - 1), Department))
+  # # Create column with vaccine location
+  # new_sched <- new_sched %>% 
+  #   mutate(Mfg = ifelse(is.na(Immunizations), "Pfizer", # Assume any visits without immunization record are Pfizer
+  #                       ifelse(str_detect(Immunizations, "Moderna"), "Moderna", "Pfizer")),
+  #          Dose = ifelse(str_detect(Type, "DOSE 1"), 1, ifelse(str_detect(Type, "DOSE 2"), 2, NA)),
+  #          ApptDate = date(Date),
+  #          ApptYear = year(Date),
+  #          ApptMonth = month(Date),
+  #          ApptDay = day(Date),
+  #          ApptWeek = week(Date),
+  #          Department = ifelse(str_detect(Department, ","), substr(Department, 1, str_locate(Department, ",") - 1), Department))
   
   # Determine dates in new report
-  current_dates <- sort(unique(new_sched$ApptDate))
+  current_dates <- sort(unique(as.Date(new_sched$Date)))
   
   if (initial_run) {
     sched_repo <- new_sched
   } else {
     # Update schedule repository by removing duplicate dates and adding data from new report
     sched_repo <- sched_repo %>%
-      filter(!(ApptDate >= current_dates[1]))
+      filter(!(as.Date(Date) >= current_dates[1]))
     sched_repo <- rbind(sched_repo, new_sched)
   }
 
   saveRDS(sched_repo, paste0(user_directory, "/R_Sched_AM_Repo/Sched ",
-                             format(min(sched_repo$ApptDate), "%m%d%y"), " to ",
-                             format(max(sched_repo$ApptDate), "%m%d%y"),
+                             format(min(sched_repo$Date), "%m%d%y"), " to ",
+                             format(max(sched_repo$Date), "%m%d%y"),
                              " on ", format(Sys.time(), "%m%d%y %H%M"), ".rds"))
   
 } else {
@@ -156,6 +159,26 @@ if (update_repo) {
 # Format and analyze schedule to date for dashboards ---------------------------
 sched_to_date <- sched_repo
 
+sched_to_date <- sched_to_date %>%
+  mutate(Mfg = ifelse(is.na(Immunizations), "Pfizer", # Assume any visits without immunization record are Pfizer
+                      ifelse(str_detect(Immunizations, "Moderna"), "Moderna", "Pfizer")),
+         Dose = ifelse(str_detect(Type, "DOSE 1"), 1, ifelse(str_detect(Type, "DOSE 2"), 2, NA)),
+         ApptDate = date(Date),
+         ApptYear = year(Date),
+         ApptMonth = month(Date),
+         ApptDay = day(Date),
+         ApptWeek = week(Date),
+         Department = ifelse(str_detect(Department, ","), substr(Department, 1, str_locate(Department, ",") - 1), Department), 
+         Status = ifelse(`Appt Status` %in% c("Arrived", "Comp", "Checked Out"), "Arr", `Appt Status`), # Group various arrival statuses as "Arr"
+         Status2 = ifelse(ApptDate == today & Status == "Arr", "Sch", # Categorize any arrivals from today as scheduled for easier manipulation
+                          ifelse(ApptDate < today & Status == "Sch", "No Show", Status)), # Categorize any appts still in sch status from prior days as no shows
+         # Modify status 2 for running report late in evening instead of early morning
+         # Status2 = ifelse(ApptDate == today & Status == "Arr", "Arr", # Categorize any arrivals from today as scheduled for easier manipulation
+         #                  ifelse(ApptDate <= today & Status == "Sch", "No Show", Status)), # Categorize any appts still in sch status from prior days as no shows
+         WeekNum = format(ApptDate, "%U"),
+         DOW = weekdays(ApptDate),
+         NYZip = substr(`ZIP Code`, 1, 5) %in% ny_zips$zipcode)
+
 sched_to_date <- left_join(sched_to_date, site_mappings,
                            by = c("Department" = "Department"))
 
@@ -163,17 +186,6 @@ sched_to_date <- left_join(sched_to_date, pod_mappings[ , c("Provider", "Pod Typ
                            by = c("Provider/Resource" = "Provider"))
 
 sched_to_date[is.na(sched_to_date$`Pod Type`), "Pod Type"] <- "Patient"
-
-sched_to_date <- sched_to_date %>%
-  mutate(Status = ifelse(`Appt Status` %in% c("Arrived", "Comp", "Checked Out"), "Arr", `Appt Status`), # Group various arrival statuses as "Arr"
-         Status2 = ifelse(ApptDate == today & Status == "Arr", "Sch", # Categorize any arrivals from today as scheduled for easier manipulation
-                                 ifelse(ApptDate < today & Status == "Sch", "No Show", Status)), # Categorize any appts still in sch status from prior days as no shows
-         # Modify status 2 for running report late in evening instead of early morning
-         # Status2 = ifelse(ApptDate == today & Status == "Arr", "Arr", # Categorize any arrivals from today as scheduled for easier manipulation
-         #                  ifelse(ApptDate <= today & Status == "Sch", "No Show", Status)), # Categorize any appts still in sch status from prior days as no shows
-         WeekNum = format(ApptDate, "%U"),
-         DOW = weekdays(ApptDate),
-         NYZip = substr(`ZIP Code`, 1, 5) %in% ny_zips$zipcode)
 
 # Pull out appointment type from appointment notes
 appt_notes <- as.data.frame(unique(sched_to_date[ , c("Appt Notes", "Dose")]))
@@ -491,7 +503,7 @@ export_list <- list("SchedSummary" = sched_summary,
                     "WalkInsStats_7Days" = cast_dose1_7day_walkins_stats)
 
 write_xlsx(export_list, path = paste0(user_directory, 
-                                      "/R_Sched_Analysis_AM_Export/Sched Data Export ", 
+                                      "/R_Sched_Analysis_AM_Export/Test New Repo Sched Data Export ", 
                                       format(Sys.time(), "%m%d%y %H%M"), ".xlsx"))
 
 
@@ -693,3 +705,144 @@ dose1_appts_made_yest_site <- sched_to_date %>%
   filter(Dose == 1 & `Made Date` == yest & Status2 == "Sch" & ApptDate >= appt_start_date & ApptDate <= appt_end_date) %>%
   group_by(Site, `Pod Type`) %>%
   summarize(Count = n())  
+
+# Adjust manufacturer for testing
+sched_to_date <- sched_to_date %>%
+  mutate(Mfg2 = ifelse(Status2 != "Arr", NA, ifelse(is.na(Immunizations), "Pfizer", # Assume any visits without immunization record are Pfizer
+                             ifelse(str_detect(Immunizations, "Moderna"), "Moderna", "Pfizer"))))
+
+test <- sched_to_date %>%
+  group_by(Mfg, Mfg2) %>%
+  summarize(Count = n())
+
+test_df <- sched_to_date %>%
+  filter(Mfg == "Pfizer" & is.na(Mfg2))
+
+mfg_check <- test_df %>%
+  group_by(`Appt Status`, Status, Status2, Mfg, Mfg2) %>%
+  summarize(Count = n())
+
+# Create dataframes for exporting administration data by manufacturer
+# Create daily summary of administered doses by manufacturer
+admin_mfg_summary <- sched_to_date %>%
+  filter(Status2 == "Arr") %>%
+  group_by(Site, Mfg2, Dose, ApptDate, Status2) %>%
+  summarize(Count = n())
+
+# Create summary of administered doses prior to yesterday and yesterday
+admin_prior_yest_site <- sched_to_date %>%
+  filter(Status2 == "Arr" & ApptDate <= (today - 2)) %>%
+  group_by(Site, Mfg2, Dose) %>%
+  summarize(DateRange = paste0("Admin 12/15/20-", format(today - 2, "%m/%d/%y")), 
+            Count = n())
+
+admin_yest_site <- sched_to_date %>%
+  filter(Status2 == "Arr" & ApptDate == (today - 1)) %>%
+  group_by(Site, Mfg2, Dose) %>%
+  summarize(DateRange = paste0("Admin ", format(today - 1, "%m/%d/%y")),
+            Count = n())
+
+admin_prior_yest_system <- sched_to_date %>%
+  filter(Status2 == "Arr" & ApptDate <= (today - 2)) %>%
+  group_by(Mfg2, Dose) %>%
+  summarize(Site = "MSHS", 
+            DateRange = paste0("Admin 12/15/20-", format(today - 2, "%m/%d/%y")), 
+            Count = n())
+
+admin_yest_system <- sched_to_date %>%
+  filter(Status2 == "Arr" & ApptDate == (today - 1)) %>%
+  group_by(Mfg2, Dose) %>%
+  summarize(Site = "MSHS", 
+            DateRange = paste0("Admin ", format(today - 1, "%m/%d/%y")),
+            Count = n())
+
+admin_prior_yest_system <- admin_prior_yest_system[ , colnames(admin_prior_yest_site)]
+admin_yest_system <- admin_yest_system[ , colnames(admin_yest_site)]
+
+admin_to_date_mfg <- rbind(admin_prior_yest_site, admin_yest_site,
+                           admin_prior_yest_system, admin_yest_system)
+
+admin_to_date_mfg <- admin_to_date_mfg %>%
+  ungroup() %>%
+  mutate(Site = factor(Site, levels = sites, ordered = TRUE),
+         Mfg2 = factor(Mfg2, levels = mfg, ordered = TRUE)) %>%
+  arrange(Site, Dose, Mfg2, desc(DateRange))
+
+admin_to_date_mfg <- admin_to_date_mfg[ , c("Dose", "Mfg2", "Site", "DateRange", "Count")]
+
+admin_to_date_mfg <- admin_to_date_mfg %>%
+  mutate(DateRange = factor(DateRange, level = unique(DateRange), ordered = TRUE))
+
+admin_to_date_mfg_cast <- dcast(admin_to_date_mfg, 
+                                Dose + Mfg2 + Site ~ DateRange,
+                                value.var ="Count")
+
+# Create dataframe of doses
+rep_doses <- data.frame("Dose" = rep(c(1:2), length(sites)))
+rep_doses <- rep_doses %>%
+  arrange(Dose)
+
+rep_mfg <- data.frame("Mfg" = rep(mfg, length(sites)))
+rep_mfg <- rep_mfg %>%
+  arrange(desc(Mfg))
+
+rep_sites_mfg <- data.frame("Site" = rep(sites, length(mfg)), "Mfg" = rep_mfg)
+
+rep_sites_doses <- data.frame("Site" = rep(sites, 2), "Dose" = rep_doses)
+
+sites_doses_mfg <- left_join(rep_sites_mfg, rep_sites_doses,
+                             by = c("Site" = "Site"))
+
+sites_doses_mfg <- sites_doses_mfg %>%
+  mutate(Site = factor(Site, levels = sites, ordered = TRUE),
+         Mfg = factor(Mfg, levels = mfg, ordered = TRUE)) %>%
+  arrange(Dose, Mfg, Site)
+
+sites_doses_mfg <- sites_doses_mfg[ , c("Dose", "Mfg", "Site")]
+
+admin_to_date_mfg_export <- left_join(sites_doses_mfg, admin_to_date_mfg_cast, 
+                                      by = c("Dose" = "Dose", "Mfg" = "Mfg2", "Site" = "Site"))
+
+# One time data export looking at cumulative doses administered through 2/6/21 by manufacturer
+# Create summary of administered doses prior to yesterday and yesterday
+sched_feb6_analysis <- sched_to_date %>%
+  mutate(DateRange = ifelse(ApptDate <= as.Date("2/6/21", format = "%m/%d/%y"), "12/15/20-02/06/21", format(ApptDate, "%m/%d/%y")))
+
+cum_admin_feb6_site <- sched_feb6_analysis %>%
+  filter(Status2 == "Arr") %>%
+  group_by(Site, Mfg2, Dose, DateRange) %>%
+  summarize(Count = n())
+
+cum_admin_feb6_system <- sched_feb6_analysis %>%
+  filter(Status2 == "Arr") %>%
+  group_by( Mfg2, Dose, DateRange) %>%
+  summarize(Site = "MSHS",
+            Count = n())
+
+cum_admin_feb6_system <- cum_admin_feb6_system[ , colnames(cum_admin_feb6_site)]
+
+cum_admin_feb6_mfg <- rbind(cum_admin_feb6_site, cum_admin_feb6_system)
+
+cum_admin_feb6_mfg <- cum_admin_feb6_mfg %>%
+  ungroup() %>%
+  mutate(Site = factor(Site, levels = sites, ordered = TRUE),
+         Mfg2 = factor(Mfg2, levels = mfg, ordered = TRUE)) %>%
+  arrange(Site, Dose, Mfg2, desc(DateRange))
+
+cum_admin_feb6_mfg <- cum_admin_feb6_mfg[ , c("Dose", "Mfg2", "Site", "DateRange", "Count")]
+
+cum_admin_feb6_mfg <- cum_admin_feb6_mfg %>%
+  mutate(DateRange = factor(DateRange, level = sort(unique(DateRange)), ordered = TRUE))
+
+cum_admin_feb6_mfg_cast <- dcast(cum_admin_feb6_mfg, 
+                                Dose + Mfg2 + Site ~ DateRange,
+                                value.var ="Count")
+
+cum_admin_feb6_mfg_cast <- cum_admin_feb6_mfg_cast[ , c(1:3, ncol(cum_admin_feb6_mfg_cast), 4:(ncol(cum_admin_feb6_mfg_cast)-1))]
+
+cum_admin_feb6_mfg_export <- left_join(sites_doses_mfg, cum_admin_feb6_mfg_cast,
+                                       by = c("Dose" = "Dose",
+                                              "Mfg" = "Mfg2", 
+                                              "Site" = "Site"))
+
+
