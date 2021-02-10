@@ -199,6 +199,7 @@ sched_summary <- sched_to_date %>%
   summarize(Count = n())
 
 # Summarize schedule breakdown for next 2 weeks and export ------------------------------
+# Format data
 sched_breakdown <- sched_to_date %>%
   filter(Status2 %in% c("Arr", "Sch") & ApptDate >= (today - 1) & ApptDate <= (today + 14)) %>%
   group_by(Dose, `Pod Type`, Site, Status2, ApptDate) %>%
@@ -212,6 +213,36 @@ sched_breakdown <- sched_breakdown[order(sched_breakdown$Dose,
 sched_breakdown_cast <- dcast(sched_breakdown,
                               Dose + `Pod Type` + Site ~ Status2 + ApptDate,
                               value.var = "Count")
+
+# Create template dataframe of all sites, dose, and pod type combinations to ensure all are included even if there are no scheduled appointments
+sch_breakdown_doses <- data.frame("Dose" = rep(c(1:2), length(unique(sched_to_date$Site))))
+sch_breakdown_doses <- sch_breakdown_doses %>%
+  arrange(Dose)
+
+sch_breakdown_pods <- data.frame("PodType" = rep(pod_type[1:2], length(unique(sched_to_date$Site))), stringsAsFactors = FALSE)
+sch_breakdown_pods <- sch_breakdown_pods %>%
+  arrange(PodType)
+
+sch_breakdown_site_doses <- data.frame("Site" = rep(unique(sched_to_date$Site), 2),
+                                       "Dose" = sch_breakdown_doses,
+                                       stringsAsFactors = FALSE)
+
+sch_breakdown_site_pods <- data.frame("Site" = rep(unique(sched_to_date$Site), 2),
+                                      "PodType" = sch_breakdown_pods,
+                                      stringsAsFactors = FALSE)
+
+sch_breakdown_site_dose_pod <- left_join(sch_breakdown_site_doses, sch_breakdown_site_pods, 
+                                           by = c("Site" = "Site"))
+
+sch_breakdown_site_dose_pod <- sch_breakdown_site_dose_pod %>%
+  select(Dose, PodType, Site) %>%
+  arrange(Dose, PodType, Site)
+
+# Merge template dataframe with schedule breakdown data
+sched_breakdown_cast <- left_join(sch_breakdown_site_dose_pod, sched_breakdown_cast,
+                                  by = c("Dose" = "Dose",
+                                         "PodType" = "Pod Type",
+                                         "Site" = "Site"))
 
 # Summarize schedule for next 7 days for daily schedule target analysis ----------------------
 sched_7days_pod_type <- sched_to_date %>%
