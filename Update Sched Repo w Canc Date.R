@@ -48,18 +48,18 @@ user_path <- paste0(user_directory, "\\*.*")
 today <- Sys.Date()
 
 # Import schedule repository
-sched_repo <- readRDS(choose.files(default = paste0(user_directory, "/R_Sched_AM_Repo/*.*"), caption = "Select schedule repository"))
+sched_repo <- readRDS(choose.files(default = paste0(user_directory, "/R_Sched_AM_Repo/*.*"), caption = "Select schedule repository from yesterday morning"))
     
 # Add a column for cancel date to match new Epic reports
 sched_repo <- sched_repo %>%
-      mutate(`Canc Date` = NA,
-             ApptDate = date(ApptDate))
+      mutate(`Canc Date` = NA) #,
+             # ApptDate = date(ApptDate))
 
 # Reorder columns to match new Epic reports
-sched_repo <- sched_repo[ , c(1:10, 33, 11:32)]
+sched_repo <- sched_repo[ , c(1:10, ncol(sched_repo), 11:(ncol(sched_repo) - 1))]
 
 # Export repository to new .RDS 
 saveRDS(sched_repo, paste0(user_directory, "/R_Sched_AM_Repo/Sched w Canc Date ",
-                           format(min(sched_repo$ApptDate), "%m%d%y"), " to ",
-                           format(max(sched_repo$ApptDate), "%m%d%y"),
+                           format(min(sched_repo$Date), "%m%d%y"), " to ",
+                           format(max(sched_repo$Date), "%m%d%y"),
                            " on ", format(Sys.time(), "%m%d%y %H%M"), ".rds"))
