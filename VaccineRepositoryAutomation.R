@@ -536,7 +536,7 @@ nys_dose1_14days <- sched_to_date %>%
 # Walk-In stats for last 7 days ------------------------------------------
 # Determine daily walk-ins by pod type
 dose1_7day_walkins_type <- sched_to_date %>%
-  filter(Status == "Arr" & Dose == 1 & ApptDate > (today - 7) & ApptDate <= today) %>%
+  filter(Status2 == "Arr" & Dose == 1 & ApptDate >= (today - 7) & ApptDate <= today) %>%
   group_by(Site, `Pod Type`, Dose,
            ApptYear, WeekNum, ApptDate, DOW) %>%
   summarize(DailyArrivals = n(),
@@ -545,7 +545,7 @@ dose1_7day_walkins_type <- sched_to_date %>%
 
 # Determine daily walk-ins for each site
 dose1_7day_walkins_totals <- sched_to_date %>%
-  filter(Status == "Arr" & Dose == 1 & ApptDate > (today - 7) & ApptDate <= today) %>%
+  filter(Status2 == "Arr" & Dose == 1 & ApptDate >= (today - 7) & ApptDate <= today) %>%
   group_by(Site, Dose,
            ApptYear, WeekNum, ApptDate, DOW) %>%
   summarize(`Pod Type` = "All",
@@ -573,7 +573,7 @@ dose1_7day_walkins_summary <- dose1_7day_walkins_summary %>%
 # Calculate average walk-in volume and average walk-in percentage
 dose1_7day_walkins_avg <- dose1_7day_walkins_summary %>%
   group_by(Site, Dose, `Pod Type`) %>%
-  summarize(AvgWalkInVolume = sum(DailyWalkIns) / 7,
+  summarize(AvgWalkInVolume = sum(DailyWalkIns) / sum(DailyWalkIns > 0),
             WalkInPercent = percent(sum(DailyWalkIns) / sum(DailyArrivals))) %>%
   ungroup()
 
