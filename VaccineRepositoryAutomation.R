@@ -615,7 +615,7 @@ export_list <- list("SchedSummary" = sched_summary,
                     "WalkInsStats_7Days" = cast_dose1_7day_walkins_stats)
 
 write_xlsx(export_list, path = paste0(user_directory, 
-                                      "/R_Sched_Analysis_AM_Export/Test New Repo Sched Data Export ", 
+                                      "/R_Sched_Analysis_AM_Export/Sched Data Export ", 
                                       format(Sys.time(), "%m%d%y %H%M"), ".xlsx"))
 
 # MISCELLANEOUS ANALYSIS -------------------------------------------------------
