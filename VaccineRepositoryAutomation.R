@@ -160,9 +160,7 @@ if (update_repo) {
 sched_to_date <- sched_repo
 
 sched_to_date <- sched_to_date %>%
-  mutate(Mfg = ifelse(is.na(Immunizations), "Pfizer", # Assume any visits without immunization record are Pfizer
-                      ifelse(str_detect(Immunizations, "Moderna"), "Moderna", "Pfizer")),
-         Dose = ifelse(str_detect(Type, "DOSE 1"), 1, ifelse(str_detect(Type, "DOSE 2"), 2, NA)),
+  mutate(Dose = ifelse(str_detect(Type, "DOSE 1"), 1, ifelse(str_detect(Type, "DOSE 2"), 2, NA)),
          ApptDate = date(Date),
          ApptYear = year(Date),
          ApptMonth = month(Date),
@@ -175,6 +173,9 @@ sched_to_date <- sched_to_date %>%
          # Modify status 2 for running report late in evening instead of early morning
          # Status2 = ifelse(ApptDate == today & Status == "Arr", "Arr", # Categorize any arrivals from today as scheduled for easier manipulation
          #                  ifelse(ApptDate <= today & Status == "Sch", "No Show", Status)), # Categorize any appts still in sch status from prior days as no shows
+         Mfg = ifelse(Status2 != "Arr", NA, #Keep manufacturer as NA if the appointment hasn't been arrived
+                      ifelse(is.na(Immunizations), "Pfizer", # Assume any visits without immunization record are Pfizer
+                             ifelse(str_detect(Immunizations, "Moderna"), "Moderna", "Pfizer"))),
          WeekNum = format(ApptDate, "%U"),
          DOW = weekdays(ApptDate),
          NYZip = substr(`ZIP Code`, 1, 5) %in% ny_zips$zipcode)
@@ -291,7 +292,14 @@ sched_7days_format_jm <- left_join(sched_7days_all_sites_dates, sched_7days_summ
 # Determine dates in this inventory cycle based on today's date and Tuesday of the next week
 sched_inv_cycle_dates <- seq(today, floor_date(today, unit = "week", week_start = 7) + 16, by = 1)
 
+# Create template for all site and date combinations
 sched_inv_cycle_dates_rep <- rep(sched_inv_cycle_dates, length(unique(sched_to_date$Site)))
+
+sched_inv_cycle_sites <- sort(rep(unique(sched_to_date$Site), length(sched_inv_cycle_dates)))
+
+sched_inv_cycle_all_sites_dates <- data.frame("Site" = sched_inv_cycle_sites,
+                                              "ApptDate" = sched_inv_cycle_dates_rep,
+                                              stringsAsFactors = FALSE)
 
 # Determine schedule for each site within this inventory cycle's date range
 sched_inv_cycle_pod_type_site <- sched_to_date %>%
@@ -320,13 +328,6 @@ sched_inv_cycle_site_summary <- sched_inv_cycle_site_summary %>%
 sched_inv_cycle_site_summary_cast <- dcast(sched_inv_cycle_site_summary,
                                   Site + ApptDate ~ Dose + `Pod Type`,
                                   value.var = "Count")
-
-
-sched_inv_cycle_sites <- sort(rep(unique(sched_to_date$Site), length(sched_inv_cycle_dates)))
-
-sched_inv_cycle_all_sites_dates <- data.frame("Site" = sched_inv_cycle_sites,
-                                          "ApptDate" = sched_inv_cycle_dates_rep,
-                                          stringsAsFactors = FALSE)
 
 sched_inv_cycle_sites_jm <- left_join(sched_inv_cycle_all_sites_dates, sched_inv_cycle_site_summary_cast,
                                    by = c("Site" = "Site",
@@ -434,7 +435,85 @@ admin_doses_table_export <- melt(admin_2nd_dose_remaining,
 admin_doses_table_export <- dcast(admin_doses_table_export,
                            Site ~ variable + `Pod Type`, value.var = "value")
 
+# Stratify administered doses to date by manufacturer -------------------------------------------
+# Create daily summary of administered doses by manufacturer
+admin_mfg_summary <- sched_to_date %>%
+  filter(Status2 == "Arr") %>%
+  group_by(Site, Mfg, Dose, ApptDate, Status2) %>%
+  summarize(Count = n())
 
+# Create summary of administered doses prior to yesterday and yesterday
+admin_prior_yest_site <- sched_to_date %>%
+  filter(Status2 == "Arr" & ApptDate <= (today - 2)) %>%
+  group_by(Site, Mfg, Dose) %>%
+  summarize(DateRange = paste0("Admin 12/15/20-", format(today - 2, "%m/%d/%y")), 
+            Count = n())
+
+admin_yest_site <- sched_to_date %>%
+  filter(Status2 == "Arr" & ApptDate == (today - 1)) %>%
+  group_by(Site, Mfg, Dose) %>%
+  summarize(DateRange = paste0("Admin ", format(today - 1, "%m/%d/%y")),
+            Count = n())
+
+# admin_prior_yest_system <- sched_to_date %>%
+#   filter(Status2 == "Arr" & ApptDate <= (today - 2)) %>%
+#   group_by(Mfg, Dose) %>%
+#   summarize(Site = "MSHS", 
+#             DateRange = paste0("Admin 12/15/20-", format(today - 2, "%m/%d/%y")), 
+#             Count = n())
+# 
+# admin_yest_system <- sched_to_date %>%
+#   filter(Status2 == "Arr" & ApptDate == (today - 1)) %>%
+#   group_by(Mfg, Dose) %>%
+#   summarize(Site = "MSHS", 
+#             DateRange = paste0("Admin ", format(today - 1, "%m/%d/%y")),
+#             Count = n())
+# 
+# admin_prior_yest_system <- admin_prior_yest_system[ , colnames(admin_prior_yest_site)]
+# admin_yest_system <- admin_yest_system[ , colnames(admin_yest_site)]
+
+admin_to_date_mfg <- rbind(admin_prior_yest_site, admin_yest_site)
+                           # admin_prior_yest_system, admin_yest_system)
+
+admin_to_date_mfg <- admin_to_date_mfg %>%
+  ungroup() %>%
+  # mutate(Site = factor(Site, levels = sites, ordered = TRUE),
+  #        Mfg = factor(Mfg, levels = mfg, ordered = TRUE)) %>%
+  arrange(Site, Dose, desc(Mfg), desc(DateRange))
+
+admin_to_date_mfg <- admin_to_date_mfg[ , c("Dose", "Mfg", "Site", "DateRange", "Count")]
+
+admin_to_date_mfg <- admin_to_date_mfg %>%
+  mutate(DateRange = factor(DateRange, level = unique(DateRange), ordered = TRUE))
+
+admin_to_date_mfg_cast <- dcast(admin_to_date_mfg, 
+                                Dose + Mfg + Site ~ DateRange,
+                                value.var ="Count")
+
+# Create template dataframe of sites, doses, and manufacturers to ensure all combinations are included
+rep_doses <- data.frame("Dose" = rep(c(1:2), length(unique(sched_to_date$Site))))
+rep_doses <- rep_doses %>%
+  arrange(Dose)
+
+rep_mfg <- data.frame("Mfg" = rep(mfg, length(unique(sched_to_date$Site))), stringsAsFactors = FALSE)
+rep_mfg <- rep_mfg %>%
+  arrange(desc(Mfg))
+
+rep_sites_mfg <- data.frame("Site" = rep(unique(sched_to_date$Site), length(mfg)), "Mfg" = rep_mfg, stringsAsFactors = FALSE)
+
+rep_sites_doses <- data.frame("Site" = rep(unique(sched_to_date$Site), 2), "Dose" = rep_doses, stringsAsFactors = FALSE)
+
+# Combine template with administration data
+sites_doses_mfg <- left_join(rep_sites_mfg, rep_sites_doses,
+                             by = c("Site" = "Site"))
+
+sites_doses_mfg <- sites_doses_mfg %>%
+  arrange(Dose, desc(Mfg), Site)
+
+sites_doses_mfg <- sites_doses_mfg[ , c("Dose", "Mfg", "Site")]
+
+admin_to_date_mfg_export <- left_join(sites_doses_mfg, admin_to_date_mfg_cast, 
+                                      by = c("Dose" = "Dose", "Mfg" = "Mfg", "Site" = "Site"))
 
 # Determine NYS vs NYS patients based on zip code ----------------------------------
 nys_dose1_to_date <- sched_to_date %>%
@@ -529,6 +608,8 @@ export_list <- list("SchedSummary" = sched_summary,
                     "Sched_InvCycle_Site" = sched_inv_cycle_sites_jm,
                     "Sched_InvCycle_Sys" = sched_inv_cycle_sys_jm,
                     "CumDosesAdministered" = admin_doses_table_export,
+                    "AdminMfgSummary" = admin_mfg_summary,
+                    "DosesAdminMfg" = admin_to_date_mfg_export,
                     "1stDoseArrivals_7Days" = cast_dose1_7day_all_arr,
                     "1stDoseWalkIns_7Days" = cast_dose1_7day_walkins_arr,
                     "WalkInsStats_7Days" = cast_dose1_7day_walkins_stats)
@@ -537,7 +618,7 @@ write_xlsx(export_list, path = paste0(user_directory,
                                       "/R_Sched_Analysis_AM_Export/Test New Repo Sched Data Export ", 
                                       format(Sys.time(), "%m%d%y %H%M"), ".xlsx"))
 
-
+# MISCELLANEOUS ANALYSIS -------------------------------------------------------
 # No show analysis -------------------------------------
 dose1_noshows_daily <- sched_to_date %>%
   filter(ApptDate < today & Dose == 1) %>%
@@ -648,143 +729,48 @@ daily_max <- daily_arrivals %>%
   summarize(MaxDailyAdmin = max(AdminVolume),
             DateOfMax = ApptDate[which(AdminVolume == max(AdminVolume))])
 
-# Adjust manufacturer for testing
-sched_to_date <- sched_to_date %>%
-  mutate(Mfg2 = ifelse(Status2 != "Arr", NA, ifelse(is.na(Immunizations), "Pfizer", # Assume any visits without immunization record are Pfizer
-                             ifelse(str_detect(Immunizations, "Moderna"), "Moderna", "Pfizer"))))
 
-test <- sched_to_date %>%
-  group_by(Mfg, Mfg2) %>%
-  summarize(Count = n())
-
-test_df <- sched_to_date %>%
-  filter(Mfg == "Pfizer" & is.na(Mfg2))
-
-mfg_check <- test_df %>%
-  group_by(`Appt Status`, Status, Status2, Mfg, Mfg2) %>%
-  summarize(Count = n())
-
-# Create dataframes for exporting administration data by manufacturer
-# Create daily summary of administered doses by manufacturer
-admin_mfg_summary <- sched_to_date %>%
-  filter(Status2 == "Arr") %>%
-  group_by(Site, Mfg2, Dose, ApptDate, Status2) %>%
-  summarize(Count = n())
-
-# Create summary of administered doses prior to yesterday and yesterday
-admin_prior_yest_site <- sched_to_date %>%
-  filter(Status2 == "Arr" & ApptDate <= (today - 2)) %>%
-  group_by(Site, Mfg2, Dose) %>%
-  summarize(DateRange = paste0("Admin 12/15/20-", format(today - 2, "%m/%d/%y")), 
-            Count = n())
-
-admin_yest_site <- sched_to_date %>%
-  filter(Status2 == "Arr" & ApptDate == (today - 1)) %>%
-  group_by(Site, Mfg2, Dose) %>%
-  summarize(DateRange = paste0("Admin ", format(today - 1, "%m/%d/%y")),
-            Count = n())
-
-admin_prior_yest_system <- sched_to_date %>%
-  filter(Status2 == "Arr" & ApptDate <= (today - 2)) %>%
-  group_by(Mfg2, Dose) %>%
-  summarize(Site = "MSHS", 
-            DateRange = paste0("Admin 12/15/20-", format(today - 2, "%m/%d/%y")), 
-            Count = n())
-
-admin_yest_system <- sched_to_date %>%
-  filter(Status2 == "Arr" & ApptDate == (today - 1)) %>%
-  group_by(Mfg2, Dose) %>%
-  summarize(Site = "MSHS", 
-            DateRange = paste0("Admin ", format(today - 1, "%m/%d/%y")),
-            Count = n())
-
-admin_prior_yest_system <- admin_prior_yest_system[ , colnames(admin_prior_yest_site)]
-admin_yest_system <- admin_yest_system[ , colnames(admin_yest_site)]
-
-admin_to_date_mfg <- rbind(admin_prior_yest_site, admin_yest_site,
-                           admin_prior_yest_system, admin_yest_system)
-
-admin_to_date_mfg <- admin_to_date_mfg %>%
-  ungroup() %>%
-  mutate(Site = factor(Site, levels = sites, ordered = TRUE),
-         Mfg2 = factor(Mfg2, levels = mfg, ordered = TRUE)) %>%
-  arrange(Site, Dose, Mfg2, desc(DateRange))
-
-admin_to_date_mfg <- admin_to_date_mfg[ , c("Dose", "Mfg2", "Site", "DateRange", "Count")]
-
-admin_to_date_mfg <- admin_to_date_mfg %>%
-  mutate(DateRange = factor(DateRange, level = unique(DateRange), ordered = TRUE))
-
-admin_to_date_mfg_cast <- dcast(admin_to_date_mfg, 
-                                Dose + Mfg2 + Site ~ DateRange,
-                                value.var ="Count")
-
-# Create dataframe of doses
-rep_doses <- data.frame("Dose" = rep(c(1:2), length(sites)))
-rep_doses <- rep_doses %>%
-  arrange(Dose)
-
-rep_mfg <- data.frame("Mfg" = rep(mfg, length(sites)))
-rep_mfg <- rep_mfg %>%
-  arrange(desc(Mfg))
-
-rep_sites_mfg <- data.frame("Site" = rep(sites, length(mfg)), "Mfg" = rep_mfg)
-
-rep_sites_doses <- data.frame("Site" = rep(sites, 2), "Dose" = rep_doses)
-
-sites_doses_mfg <- left_join(rep_sites_mfg, rep_sites_doses,
-                             by = c("Site" = "Site"))
-
-sites_doses_mfg <- sites_doses_mfg %>%
-  mutate(Site = factor(Site, levels = sites, ordered = TRUE),
-         Mfg = factor(Mfg, levels = mfg, ordered = TRUE)) %>%
-  arrange(Dose, Mfg, Site)
-
-sites_doses_mfg <- sites_doses_mfg[ , c("Dose", "Mfg", "Site")]
-
-admin_to_date_mfg_export <- left_join(sites_doses_mfg, admin_to_date_mfg_cast, 
-                                      by = c("Dose" = "Dose", "Mfg" = "Mfg2", "Site" = "Site"))
-
-# One time data export looking at cumulative doses administered through 2/6/21 by manufacturer
+# One time data export looking at cumulative doses administered through 2/6/21 by manufacturer --------------------------------
 # Create summary of administered doses prior to yesterday and yesterday
 sched_feb6_analysis <- sched_to_date %>%
   mutate(DateRange = ifelse(ApptDate <= as.Date("2/6/21", format = "%m/%d/%y"), "12/15/20-02/06/21", format(ApptDate, "%m/%d/%y")))
 
 cum_admin_feb6_site <- sched_feb6_analysis %>%
   filter(Status2 == "Arr") %>%
-  group_by(Site, Mfg2, Dose, DateRange) %>%
+  group_by(Site, Mfg, Dose, DateRange) %>%
   summarize(Count = n())
 
-cum_admin_feb6_system <- sched_feb6_analysis %>%
-  filter(Status2 == "Arr") %>%
-  group_by( Mfg2, Dose, DateRange) %>%
-  summarize(Site = "MSHS",
-            Count = n())
-
-cum_admin_feb6_system <- cum_admin_feb6_system[ , colnames(cum_admin_feb6_site)]
-
-cum_admin_feb6_mfg <- rbind(cum_admin_feb6_site, cum_admin_feb6_system)
+# cum_admin_feb6_system <- sched_feb6_analysis %>%
+#   filter(Status2 == "Arr") %>%
+#   group_by( Mfg, Dose, DateRange) %>%
+#   summarize(Site = "MSHS",
+#             Count = n())
+# 
+# cum_admin_feb6_system <- cum_admin_feb6_system[ , colnames(cum_admin_feb6_site)]
+# 
+cum_admin_feb6_mfg <- rbind(cum_admin_feb6_site) #, cum_admin_feb6_system)
 
 cum_admin_feb6_mfg <- cum_admin_feb6_mfg %>%
   ungroup() %>%
-  mutate(Site = factor(Site, levels = sites, ordered = TRUE),
-         Mfg2 = factor(Mfg2, levels = mfg, ordered = TRUE)) %>%
-  arrange(Site, Dose, Mfg2, desc(DateRange))
+  arrange(Site, Dose, desc(Mfg), desc(DateRange))
 
-cum_admin_feb6_mfg <- cum_admin_feb6_mfg[ , c("Dose", "Mfg2", "Site", "DateRange", "Count")]
+cum_admin_feb6_mfg <- cum_admin_feb6_mfg[ , c("Dose", "Mfg", "Site", "DateRange", "Count")]
 
 cum_admin_feb6_mfg <- cum_admin_feb6_mfg %>%
   mutate(DateRange = factor(DateRange, level = sort(unique(DateRange)), ordered = TRUE))
 
 cum_admin_feb6_mfg_cast <- dcast(cum_admin_feb6_mfg, 
-                                Dose + Mfg2 + Site ~ DateRange,
+                                Dose + Mfg + Site ~ DateRange,
                                 value.var ="Count")
 
 cum_admin_feb6_mfg_cast <- cum_admin_feb6_mfg_cast[ , c(1:3, ncol(cum_admin_feb6_mfg_cast), 4:(ncol(cum_admin_feb6_mfg_cast)-1))]
 
 cum_admin_feb6_mfg_export <- left_join(sites_doses_mfg, cum_admin_feb6_mfg_cast,
                                        by = c("Dose" = "Dose",
-                                              "Mfg" = "Mfg2", 
+                                              "Mfg" = "Mfg", 
                                               "Site" = "Site"))
+
+write_xlsx(cum_admin_feb6_mfg_export, path = paste0(user_directory, "/AdHoc/Admin Doses by Mfg Thru 020621 as of ",
+                                                    format(Sys.time(), "%m%d%y %H%M"), ".xlsx"))
 
 
