@@ -87,6 +87,16 @@ if (num_reports == 2) {
   raw_df <- NULL
 }
 
+canc_dose1_report1 <- read_excel(paste0(user_directory, "/Canc Dose 1 Reports/Dose1 Canc Appts 121520 to 011521 Pulled 3PM 021221.xlsx"))
+canc_dose1_report2 <- read_excel(paste0(user_directory, "/Canc Dose 1 Reports/Dose1 Canc Appts 011621 to 021621 Pulled 316PM 021221.xlsx"))
+canc_dose1_report3 <- read_excel(paste0(user_directory, "/Canc Dose 1 Reports/Dose1 Canc Appts 021721 to 031721 Pulled 330PM 021221.xlsx"))
+canc_dose1_report4 <- read_excel(paste0(user_directory, "/Canc Dose 1 Reports/Dose1 Canc Appts 031821 to 041821 Pulled 330PM 021221.xlsx"))
+canc_dose1 <- rbind(canc_dose1_report1,
+                    canc_dose1_report2,
+                    canc_dose1_report3,
+                    canc_dose1_report4)
+
+
 
 # Modify and format columns in Epic schedule to match schedule repository
 new_sched <- raw_df
@@ -139,30 +149,49 @@ sched_hist_outlook <- left_join(sched_hist_outlook, pod_mappings[ , c("Provider"
 
 sched_hist_outlook[is.na(sched_hist_outlook$`Pod Type`), "Pod Type"] <- "Patient"
 
+saveRDS(sched_hist_outlook, file = paste0(user_directory, "/Dose2 Scheduling Errors/Sched Repo ",
+                                          format(min(sched_hist_outlook$Date), "%m%d%y"), " to ",
+                                          format(max(sched_hist_outlook$Date), "%m%d%y"),
+                                          " as of 3PM 02122021.rds"))
+
 
 # Create flag to identify patients with multiple charts
 pt_id_mrn <- as.data.frame(unique(sched_hist_outlook[ , c("NameDOBID", "MRN")]))
 
 pt_id_mrn <- pt_id_mrn %>%
-  mutate(DuplChart = duplicated(NameDOBID))
+  mutate(DuplChart = duplicated(NameDOBID),
+         DuplNameDOB = duplicated(MRN))
 
 dupl_charts <- unique(pt_id_mrn %>%
                         filter(DuplChart) %>%
-                        mutate(MRN = NULL))
+                        mutate(MRN = NULL,
+                               DuplNameDOB = NULL))
+
+dupl_namedob <- unique(pt_id_mrn %>%
+                         filter(DuplNameDOB) %>%
+                         mutate(NameDOBID = NULL,
+                                DuplChart = NULL))
 
 pt_id_mrn <- pt_id_mrn %>%
-  mutate(DuplChart = NULL)
+  mutate(DuplChart = NULL,
+         DuplNameDOB = NULL)
 
 pt_id_mrn <- left_join(pt_id_mrn, dupl_charts,
                        by = c("NameDOBID" = "NameDOBID"))
 
+pt_id_mrn <- left_join(pt_id_mrn, dupl_namedob,
+                       by = c("MRN" = "MRN"))
+
 pt_id_mrn <- pt_id_mrn %>%
-  mutate(DuplChart = ifelse(is.na(DuplChart), FALSE, DuplChart)) %>%
+  mutate(DuplChart = ifelse(is.na(DuplChart), FALSE, DuplChart),
+         DuplNameDOB = ifelse(is.na(DuplNameDOB), FALSE, DuplNameDOB)) %>%
   arrange(DuplChart, NameDOBID)
+
+unique_mrn <- unique(pt_id_mrn[ , c("MRN", "DuplChart", "DuplNameDOB")])
 
 # Summarize data by MRN
 mrn_appt_summary <- sched_hist_outlook %>%
-  group_by(MRN, NameDOBID) %>%
+  group_by(MRN) %>%
   summarize(Arr_Sch_Dose1 = sum(Dose == 1 & Status2 %in% c("Arr", "Sch")),
             NoShow_Dose1 = sum(Dose == 1 & Status2 %in% c("No Show")),
             Canc_Dose1 = sum(Dose == 1 & Status2 %in% c("Can")),
@@ -172,11 +201,11 @@ mrn_appt_summary <- sched_hist_outlook %>%
             Sch_Dose2 = sum(Dose == 2 & Status2 %in% c("Sch")),
             Arr_Sch_Dose2 = sum(Dose == 2 & Status2 %in% c("Arr", "Sch")))
 
-mrn_appt_summary <- left_join(mrn_appt_summary, pt_id_mrn,
-                                by = c("MRN" = "MRN", "NameDOBID" = "NameDOBID"))
+mrn_appt_summary <- left_join(mrn_appt_summary, unique_mrn,
+                                by = c("MRN" = "MRN"))
 
 mrn_appt_summary <- mrn_appt_summary %>%
-  arrange(-DuplChart, NameDOBID)
+  arrange(-DuplChart)
 
 mrn_dose2_no_dose1 <- mrn_appt_summary %>%
   filter(Arr_Sch_Dose1 == 0 & Arr_Sch_Dose2 > 0) %>%
@@ -225,8 +254,7 @@ dose2_appt_details <- sched_hist_outlook %>%
 dose2_appt_details <- unique(dose2_appt_details)
 
 dose2_no_dose1_pt_detail <- left_join(mrn_dose2_no_dose1, dose2_appt_details,
-                                      by = c("MRN" = "MRN", 
-                                             "NameDOBID" = "NameDOBID"))
+                                      by = c("MRN" = "MRN"))
 
 # Create flag to identify patients with multiple dose 2 locations
 mrn_dose2_loc <- dose2_appt_details %>%
@@ -254,21 +282,24 @@ dose2_no_dose1_pt_detail <- dose2_no_dose1_pt_detail %>%
 dose2_no_dose1_pt_detail <- dose2_no_dose1_pt_detail %>%
   ungroup()
 
-colnames(dose2_no_dose1_pt_detail) <- c("MRN", "Identifier", 
-                                      "Count_ArrSch_Dose1", "Count_NoShowCanc_Dose1", 
+colnames(dose2_no_dose1_pt_detail) <- c("MRN", 
+                                      "Count_ArrSch_Dose1", "Count_NoShow_Dose1", 
+                                      "Count_Canc_Dose1", "Count_Left_Dose1", "Count_NoShowCanc_Dose1", 
                                       "Count_Arr_Dose2", "Count_Sch_Dose2", "Count_ArrSch_Dose2",
-                                      "MultPtChart", 
-                                      "Scenario", "CSN", "Site", "PodType", 
+                                      "MultPtChart", "MultNameDOB",
+                                      "Scenario", "Identifier", "CSN", "Site", "PodType", 
                                       "MultDose2Loc")
 
 dose2_no_dose1_pt_detail <- dose2_no_dose1_pt_detail[ , c("Scenario", "Site", "MRN", "Identifier",
-                                                          "MultPtChart", "MultDose2Loc",
+                                                          "MultPtChart", "MultNameDOB", "MultDose2Loc",
                                                           "CSN", "PodType",
-                                                          "Count_ArrSch_Dose1", "Count_NoShowCanc_Dose1",
+                                                          "Count_ArrSch_Dose1", 
+                                                          "Count_NoShow_Dose1", "Count_Canc_Dose1", "Count_Left_Dose1",
+                                                          "Count_NoShowCanc_Dose1",
                                                           "Count_Arr_Dose2", "Count_Sch_Dose2", "Count_ArrSch_Dose2")]
 
 dose2_no_dose1_pt_detail <- dose2_no_dose1_pt_detail %>%
-  arrange(Scenario, Site, Identifier)
+  arrange(Scenario, Site, MRN)
 
 # Summarize data
 dose2_no_dose1_errors_site_summary <- dose2_no_dose1_pt_detail %>%
@@ -300,29 +331,38 @@ receive_dose2_wo_dose1 <- dose2_no_dose1_pt_detail %>%
   select(Site, MRN, Identifier, 
          MultPtChart, MultDose2Loc,
          CSN, PodType, 
-         Count_NoShowCanc_Dose1, Count_Arr_Dose2, Count_Sch_Dose2, Count_ArrSch_Dose2)
+         Count_NoShow_Dose1, Count_Canc_Dose1, Count_Left_Dose1, 
+         Count_NoShowCanc_Dose1, 
+         Count_Arr_Dose2, Count_Sch_Dose2, 
+         Count_ArrSch_Dose2)
 
 sched_dose2_wo_dose1 <- dose2_no_dose1_pt_detail %>%
   filter(Scenario == "Sched Dose 2 w/o Arr/Sch Dose 1 at MSHS") %>%
   select(Site, MRN, Identifier, 
          MultPtChart, MultDose2Loc,
          CSN, PodType, 
-         Count_NoShowCanc_Dose1, Count_Arr_Dose2, Count_Sch_Dose2, Count_ArrSch_Dose2)
+         Count_NoShow_Dose1, Count_Canc_Dose1, Count_Left_Dose1, 
+         Count_NoShowCanc_Dose1, 
+         Count_Arr_Dose2, Count_Sch_Dose2, 
+         Count_ArrSch_Dose2)
 
 sched_dose2_noshow_dose1 <- dose2_no_dose1_pt_detail %>%
   filter(Scenario == "No Show/Canc Dose 1 & Dose 2 Still on Sched") %>%
   select(Site, MRN, Identifier, 
-         MultPtChart, MultDose2Loc,
-         CSN, PodType, 
-         Count_NoShowCanc_Dose1, Count_Arr_Dose2, Count_Sch_Dose2, Count_ArrSch_Dose2)
+         MultPtChart, MultDose2Loc, 
+         Count_NoShow_Dose1, Count_Canc_Dose1, Count_Left_Dose1, 
+         Count_NoShowCanc_Dose1, 
+         Count_Arr_Dose2, Count_Sch_Dose2, 
+         Count_ArrSch_Dose2)
 
 mult_dose2 <- dose2_no_dose1_pt_detail %>%
   filter(Scenario == "Multiple Arr/Sched Dose 2 - Scheduling Error") %>%
   select(Site, MRN, Identifier, 
-         MultPtChart, MultDose2Loc,
-         CSN, PodType, 
-         Count_NoShowCanc_Dose1, Count_Arr_Dose2, Count_Sch_Dose2, Count_ArrSch_Dose2)
-
+         MultPtChart, MultDose2Loc, 
+         Count_NoShow_Dose1, Count_Canc_Dose1, Count_Left_Dose1, 
+         Count_NoShowCanc_Dose1, 
+         Count_Arr_Dose2, Count_Sch_Dose2, 
+         Count_ArrSch_Dose2)
 
 # Create a dataframe with patients with multiple charts
 mult_pt_charts <- pt_id_mrn %>%
@@ -339,6 +379,24 @@ error_export_list <- list("Dose2_Error_SummaryTable" = dose2_no_dose1_errors_sum
                           "Pt_w_Mult_Charts" = mult_pt_charts)
 
 write_xlsx(error_export_list, path = paste0(user_directory, 
-                                                        "/AdHoc/Dose2 No Dose1 Though ", format(max(sched_hist_outlook$ApptDate), "%m%d%y"), " Error Summary & Pt List ", format(Sys.Date(), "%m%d%y"), ".xlsx"))
+                                                        "/Dose2 Scheduling Errors/Dose2 No Dose1 Though ", format(max(sched_hist_outlook$ApptDate), "%m%d%y"), " Error Summary & Pt List ", format(Sys.Date(), "%m%d%y"), ".xlsx"))
 
+# Dig deeper into patients with canceled appointments
+canc_dose1_sch_dose2 <- mrn_dose2_no_dose1 %>%
+  filter(Scenario ==	"No Show/Canc Dose 1 & Dose 2 Still on Sched" &
+           NoShow_Dose1 == 0 & 
+           Canc_Dose1 == 1 & 
+           Left_Dose1 == 0)
 
+canc_dose1_subset <- canc_dose1 %>%
+  select(MRN, Date, `Canc Date`, `Canc Reason`)
+
+canc_dose1_crosswalk <- left_join(canc_dose1_sch_dose2, canc_dose1_subset,
+                                  by = c("MRN" = "MRN"))
+
+canc_dose1_crosswalk <- canc_dose1_crosswalk %>%
+  mutate(DuplMRN = duplicated(MRN))
+
+canc_dose1_summary <- canc_dose1_crosswalk %>%
+  group_by(`Canc Reason`) %>%
+  summarize(Count = n())
