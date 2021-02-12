@@ -45,8 +45,8 @@ if (list.files("J://") == "Presidents") {
 user_path <- paste0(user_directory, "\\*.*")
 
 # Import reference data for site and pod mappings
-site_mappings <- read_excel(paste0(user_directory, "/ScheduleData/Automation Ref 2021-02-05.xlsx"), sheet = "Site Mappings")
-pod_mappings <- read_excel(paste0(user_directory, "/ScheduleData/Automation Ref 2021-02-05.xlsx"), sheet = "Pod Mappings Simple")
+site_mappings <- read_excel(paste0(user_directory, "/ScheduleData/Automation Ref 2021-02-12.xlsx"), sheet = "Site Mappings")
+pod_mappings <- read_excel(paste0(user_directory, "/ScheduleData/Automation Ref 2021-02-12.xlsx"), sheet = "Pod Mappings Simple")
 
 # Store today's date
 today <- Sys.Date()
@@ -89,28 +89,48 @@ if (num_reports == 2) {
 
 
 # Modify and format columns in Epic schedule to match schedule repository
-new_sched <- raw_df %>%
-  mutate(Mfg = ifelse(is.na(Immunizations), "Pfizer", ifelse(str_detect(Immunizations, "Moderna"), "Moderna", "Pfizer")),
-         Dose = ifelse(str_detect(Type, "DOSE 1"), 1, ifelse(str_detect(Type, "DOSE 2"), 2, NA)),
-         ApptDate = date(Date),
-         ApptYear = year(Date),
-         ApptMonth = month(Date),
-         ApptDay = day(Date),
-         ApptWeek = week(Date),
-         Department = ifelse(str_detect(Department, ","), substr(Department, 1, str_locate(Department, ",") - 1), Department))
-
+new_sched <- raw_df
 
 # Determine dates in new report
-current_dates <- sort(unique(new_sched$ApptDate))
+current_dates <- sort(unique(new_sched$Date))
 
 # Filter out any redundant dates
 sched_to_date <- sched_repo %>%
-  filter(!(ApptDate >= current_dates[1]))
+  filter(!(Date >= current_dates[1]))
 
 # Combine dataframes
 sched_hist_outlook <- rbind(sched_to_date, new_sched)
 
 # Continue preprocessing data
+sched_hist_outlook <- sched_hist_outlook %>%
+  mutate(Dose = ifelse(str_detect(Type, "DOSE 1"), 1, ifelse(str_detect(Type, "DOSE 2"), 2, NA)),
+         ApptDate = date(Date),
+         ApptYear = year(Date),
+         ApptMonth = month(Date),
+         ApptDay = day(Date),
+         ApptWeek = week(Date),
+         Department = ifelse(str_detect(Department, ","), substr(Department, 1, str_locate(Department, ",") - 1), Department), 
+         Status = ifelse(`Appt Status` %in% c("Arrived", "Comp", "Checked Out"), "Arr", `Appt Status`), # Group various arrival statuses as "Arr"
+         Status2 = ifelse(ApptDate == (today) & Status == "Arr", "Sch", # Categorize any arrivals from today as scheduled for easier manipulation; using "today - 1" since this is 1 day behind
+                          ifelse(ApptDate < (today) & Status == "Sch", "No Show", # Categorize any appts still in sch status from prior days as no shows; using "today - 1" since this is 1 day behind
+                                 ifelse(Status == "Arr" & (is.na(`Level Of Service`) | str_detect(`Level Of Service`, "ERRONEOUS")), "Left", Status))), # Correct patient with Arr status but incomplete visit
+         # Modify status 2 for running report late in evening instead of early morning
+         # Status2 = ifelse(ApptDate == today & Status == "Arr", "Arr", # Categorize any arrivals from today as scheduled for easier manipulation
+         #                  ifelse(ApptDate <= today & Status == "Sch", "No Show", Status)), # Categorize any appts still in sch status from prior days as no shows
+         Mfg = ifelse(Status2 != "Arr", NA, #Keep manufacturer as NA if the appointment hasn't been arrived
+                      ifelse(is.na(Immunizations), "Pfizer", # Assume any visits without immunization record are Pfizer
+                             ifelse(str_detect(Immunizations, "Moderna"), "Moderna", "Pfizer"))),
+         WeekNum = format(ApptDate, "%U"),
+         DOW = weekdays(ApptDate),
+         NYZip = substr(`ZIP Code`, 1, 5) %in% ny_zips$zipcode,
+         # Create unique identifier with patient's last name, first initial of first name, and DOB since there are many patients with duplicate MRNs
+         NameDOBID = ifelse(!(str_detect(Patient, ",\\s[A-Z|a-z]+")), paste(Patient, month(DOB), day(DOB), year(DOB)),
+                            paste(str_extract(Patient, ".+,\\s[A-Z|a-z]{1}"), month(DOB), day(DOB), year(DOB))), 
+         Name = substr(NameDOBID, 1, str_locate(NameDOBID, "[0-9]+\\s[0-9]+\\s[0-9]+") - 1),
+         DOBDate = as.Date(paste0(month(DOB), "/", day(DOB), "/", year(DOB)), format = "%m/%d/%Y"),
+         ScheduledBy = ifelse(str_detect(`Entry Person`, "ZOCDOC"), "ZocDoc",
+                              ifelse(str_detect(`Entry Person`, "MYCHART"), "MyChart", "Employee")))
+
 sched_hist_outlook <- left_join(sched_hist_outlook, site_mappings,
                            by = c("Department" = "Department"))
 
@@ -118,25 +138,6 @@ sched_hist_outlook <- left_join(sched_hist_outlook, pod_mappings[ , c("Provider"
                            by = c("Provider/Resource" = "Provider"))
 
 sched_hist_outlook[is.na(sched_hist_outlook$`Pod Type`), "Pod Type"] <- "Patient"
-
-sched_hist_outlook <- sched_hist_outlook %>%
-  mutate(Status = ifelse(`Appt Status` %in% c("Arrived", "Comp", "Checked Out"), "Arr", `Appt Status`), # Group various arrival statuses as "Arr"
-         Status2 = ifelse(ApptDate == (today) & Status == "Arr", "Sch", # Categorize any arrivals from today as scheduled for easier manipulation; using "today - 1" since this is 1 day behind
-                          ifelse(ApptDate < (today) & Status == "Sch", "No Show", # Categorize any appts still in sch status from prior days as no shows; using "today - 1" since this is 1 day behind
-                                 ifelse(Status == "Arr" & (is.na(`Level Of Service`) | str_detect(`Level Of Service`, "ERRONEOUS")), "Left", Status))), # Correct patient with Arr status but incomplete visit
-         # Modify status 2 for running report late in evening instead of early morning
-         # Status2 = ifelse(ApptDate == today & Status == "Arr", "Arr", # Categorize any arrivals from today as scheduled for easier manipulation
-         #                  ifelse(ApptDate <= today & Status == "Sch", "No Show", Status)), # Categorize any appts still in sch status from prior days as no shows
-         WeekNum = format(ApptDate, "%U"),
-         DOW = weekdays(ApptDate),
-         NYZip = substr(`ZIP Code`, 1, 5) %in% ny_zips$zipcode,
-         # Create unique identifier with patient's last name, first initial of first name, and DOB since there are many patients with duplicate MRNs
-         NameDOBID = ifelse(!(str_detect(Patient, ",\\s[A-Z|a-z]+")), paste(Patient, month(DOB), day(DOB), year(DOB)),
-                              paste(str_extract(Patient, ".+,\\s[A-Z|a-z]{1}"), month(DOB), day(DOB), year(DOB))), 
-         Name = substr(NameDOBID, 1, str_locate(NameDOBID, "[0-9]+\\s[0-9]+\\s[0-9]+") - 1),
-         DOBDate = as.Date(paste0(month(DOB), "/", day(DOB), "/", year(DOB)), format = "%m/%d/%Y"),
-         ScheduledBy = ifelse(str_detect(`Entry Person`, "ZOCDOC"), "ZocDoc",
-                              ifelse(str_detect(`Entry Person`, "MYCHART"), "MyChart", "Employee")))
 
 
 # Create flag to identify patients with multiple charts
@@ -163,6 +164,9 @@ pt_id_mrn <- pt_id_mrn %>%
 mrn_appt_summary <- sched_hist_outlook %>%
   group_by(MRN, NameDOBID) %>%
   summarize(Arr_Sch_Dose1 = sum(Dose == 1 & Status2 %in% c("Arr", "Sch")),
+            NoShow_Dose1 = sum(Dose == 1 & Status2 %in% c("No Show")),
+            Canc_Dose1 = sum(Dose == 1 & Status2 %in% c("Can")),
+            Left_Dose1 = sum(Dose == 1 & Status2 %in% c("Left")),
             NoShow_Canc_Dose1 = sum(Dose == 1 & Status2 %in% c("No Show", "Can", "Left")),
             Arr_Dose2 = sum(Dose == 2 & Status2 %in% c("Arr")),
             Sch_Dose2 = sum(Dose == 2 & Status2 %in% c("Sch")),
