@@ -52,8 +52,8 @@ update_repo <- TRUE
 update_walkins <- FALSE
 
 # Import reference data for site and pod mappings
-site_mappings <- read_excel(paste0(user_directory, "/ScheduleData/Automation Ref 2021-02-05.xlsx"), sheet = "Site Mappings")
-pod_mappings <- read_excel(paste0(user_directory, "/ScheduleData/Automation Ref 2021-02-05.xlsx"), sheet = "Pod Mappings Simple")
+site_mappings <- read_excel(paste0(user_directory, "/ScheduleData/Automation Ref 2021-02-13.xlsx"), sheet = "Site Mappings")
+pod_mappings <- read_excel(paste0(user_directory, "/ScheduleData/Automation Ref 2021-02-13.xlsx"), sheet = "Pod Mappings Simple")
 
 # Store today's date
 today <- Sys.Date()
@@ -123,7 +123,7 @@ if (update_repo) {
     sched_repo <- rbind(sched_repo, new_sched)
   }
   
-  saveRDS(sched_repo, paste0(user_directory, "/R_Sched_AM_Repo/Test Sched ",
+  saveRDS(sched_repo, paste0(user_directory, "/R_Sched_AM_Repo/Auto Epic Report Sched ",
                              format(min(sched_repo$Date), "%m%d%y"), " to ",
                              format(max(sched_repo$Date), "%m%d%y"),
                              " on ", format(Sys.time(), "%m%d%y %H%M"), ".rds"))
@@ -527,5 +527,5 @@ export_list <- list("SchedSummary" = sched_summary,
                     "WalkInsStats_7Days" = cast_dose1_7day_walkins_stats)
 
 write_xlsx(export_list, path = paste0(user_directory, 
-                                      "/R_Sched_Analysis_AM_Export/Test New Sched Data Export ", 
+                                      "/R_Sched_Analysis_AM_Export/Auto Epic Report Sched Data Export ", 
                                       format(Sys.time(), "%m%d%y %H%M"), ".xlsx"))
