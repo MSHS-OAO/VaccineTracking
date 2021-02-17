@@ -169,12 +169,6 @@ unique_mrn <- unique_mrn %>%
   filter(!Dupl) %>%
   mutate(Dupl = NULL)
 
-# # Determine MRNs in date range of interests
-# mrn_sched_this_week <- sched_hist_outlook %>%
-#   filter(DateOfInterest) %>%
-#   select(MRN, DateOfInterest)
-# 
-# mrn_sched_this_week <- unique(mrn_sched_this_week)
 
 # Summarize data by MRN
 mrn_appt_summary <- sched_hist_outlook %>%
@@ -191,12 +185,6 @@ mrn_appt_summary <- sched_hist_outlook %>%
 mrn_appt_summary <- left_join(mrn_appt_summary, unique_mrn,
                               by = c("MRN" = "MRN"))
 
-# mrn_appt_summary <- left_join(mrn_appt_summary, mrn_sched_this_week,
-#                               by = c("MRN" = "MRN"))
-# 
-# mrn_appt_summary <- mrn_appt_summary %>%
-#   mutate(DateOfInterest = ifelse(is.na(DateOfInterest), FALSE, DateOfInterest))
-
 mrn_appt_summary <- mrn_appt_summary %>%
   arrange(-DuplChart)
 
@@ -207,20 +195,6 @@ mrn_dose2_no_dose1 <- mrn_appt_summary %>%
                                   ifelse(Arr_Dose2 == 0 & Sch_Dose2 == 1, "Sched Dose 2 w/o Arr/Sch Dose 1 at MSHS",
                                          ifelse(Arr_Sch_Dose2 > 1, "Multiple Arr/Sched Dose 2 - Scheduling Error", "Other")))))
 
-# mrn_dose2_no_dose1_stats <- mrn_dose2_no_dose1 %>%
-#   group_by(Scenario) %>%
-#   summarize(ThroughApr27 = n())
-# 
-# mrn_dose2_no_dose1_this_week_stats <- mrn_dose2_no_dose1 %>%
-#   filter(DateOfInterest) %>%
-#   group_by(Scenario) %>%
-#   summarize(ThroughFeb20 = n())
-# 
-# mrn_dose2_no_dose1_summary_stats <- left_join(mrn_dose2_no_dose1_stats, mrn_dose2_no_dose1_this_week_stats,
-#                                               by = c("Scenario" = "Scenario"))
-
-# mrn_dose2_no_dose1_stats <- mrn_dose2_no_dose1_stats %>%
-#   mutate(Percent = percent(Count / sum(Count)))
 
 # # Summarize data by patient name and DOB identifier
 # pt_appt_summary <- sched_hist_outlook %>%
@@ -304,13 +278,14 @@ dose2_no_dose1_pt_detail <- dose2_no_dose1_pt_detail[ , c("Scenario", "Site", "M
 dose2_no_dose1_pt_detail <- dose2_no_dose1_pt_detail %>%
   arrange(Scenario, Site, MRN)
 
-# # Pull in appointment made date
-# csn_made_date <- sched_hist_outlook %>%
-#   select(CSN, `Made Date`) %>%
-#   mutate(CSN2 = format(CSN, scientific = FALSE),
-#          Dupl = duplicated(CSN2))
-# 
+# Pull in appointment made date
+csn_made_date <- sched_hist_outlook %>%
+  select(CSN, `Made Date`)
 
+csn_made_date <- unique(csn_made_date)
+
+dose2_no_dose1_pt_detail <- left_join(dose2_no_dose1_pt_detail, csn_made_date,
+                                      by = c("CSN" = "CSN"))
 
 # Summarize data
 dose2_no_dose1_errors_site <- dose2_no_dose1_pt_detail %>%
@@ -388,7 +363,7 @@ sched_dose2_wo_dose1 <- dose2_no_dose1_pt_detail %>%
     Scenario == "Sched Dose 2 w/o Arr/Sch Dose 1 at MSHS") %>%
   select(Site, MRN, DateRange,
          MultPtChart, MultDose2Loc,
-         CSN, ApptDate, PodType, 
+         CSN, `Made Date`, ApptDate, PodType, 
          Count_NoShow_Dose1, Count_Canc_Dose1, Count_Left_Dose1, 
          Count_NoShowCanc_Dose1, 
          Count_Arr_Dose2, Count_Sch_Dose2, 
@@ -400,7 +375,7 @@ sched_dose2_noshow_dose1 <- dose2_no_dose1_pt_detail %>%
            Scenario == "No Show/Canc Dose 1 & Dose 2 Still on Sched") %>%
   select(Site, MRN, DateRange,
          MultPtChart, MultDose2Loc, 
-         CSN, ApptDate, PodType, 
+         CSN, `Made Date`, ApptDate, PodType, 
          Count_NoShow_Dose1, Count_Canc_Dose1, Count_Left_Dose1, 
          Count_NoShowCanc_Dose1, 
          Count_Arr_Dose2, Count_Sch_Dose2, 
@@ -412,7 +387,7 @@ mult_dose2 <- dose2_no_dose1_pt_detail %>%
            Scenario == "Multiple Arr/Sched Dose 2 - Scheduling Error") %>%
   select(Site, MRN, DateRange,
          MultPtChart, MultDose2Loc, 
-         CSN, ApptDate, PodType, 
+         CSN, `Made Date`, ApptDate, PodType, 
          Count_NoShow_Dose1, Count_Canc_Dose1, Count_Left_Dose1, 
          Count_NoShowCanc_Dose1, 
          Count_Arr_Dose2, Count_Sch_Dose2, 
@@ -424,6 +399,28 @@ mult_pt_charts <- pt_id_mrn %>%
   filter(DuplChart) %>%
   select(MRN, NameDOBID) %>%
   arrange(NameDOBID)
+
+# Look at made date stats
+made_date_summary <- dose2_no_dose1_pt_detail %>%
+  filter(DateRange != "Before Dates of Interest") %>%
+  group_by(Scenario, `Made Date`) %>%
+  summarize(Count = n())
+
+made_date_summary_cast <- dcast(made_date_summary,
+                                `Made Date` ~ Scenario,
+                                value.var = "Count")
+
+made_date_total <- dose2_no_dose1_pt_detail %>%
+  filter(DateRange != "Before Dates of Interest") %>%
+  group_by(`Made Date`) %>%
+  summarize(Total = n())
+
+made_date_summary_stats <- left_join(made_date_summary_cast, made_date_total,
+                                    by = c("Made Date" = "Made Date"))
+
+made_date_summary_stats <- made_date_summary_stats %>%
+  mutate(Percent = percent(Total / sum(Total))) %>%
+  arrange(desc(Percent), `Made Date`)
 
 # Create list of data to export
 error_export_list <- list("Dose2_Error_SummaryTable" = dose2_no_dose1_errors_export,
