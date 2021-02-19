@@ -121,6 +121,7 @@ sched_hist_outlook[is.na(sched_hist_outlook$`Pod Type`), "Pod Type"] <- "Patient
 
 # Create dataframe with week numbers and dates for each week
 week_num <- sched_hist_outlook %>%
+  filter(Status2 == "Sch") %>%
   group_by(WeekNum) %>%
   summarize(StartDate = min(ApptDate),
             EndDate = max(ApptDate),
@@ -128,6 +129,22 @@ week_num <- sched_hist_outlook %>%
 
 sched_hist_outlook <- left_join(sched_hist_outlook, week_num[ , c("WeekNum", "Dates")],
                                by = c("WeekNum" = "WeekNum"))
+
+# Create template dataframe
+site_dose <- data.frame("Site" = (sort(rep(sites, 
+                                           length(unique(sched_hist_outlook$Dose))))),
+                        "Dose" = rep(unique(sched_hist_outlook$Dose), 
+                                     length(sites)),
+                        stringsAsFactors = FALSE)
+
+site_pod <- data.frame("Site" = sort(rep(sites, 
+                                         length(unique(sched_hist_outlook$`Pod Type`)))),
+                       "Pod" = rep(unique(sched_hist_outlook$`Pod Type`), 
+                                   length(sites)),
+                       stringsAsFactors = FALSE)
+
+site_dose_pod <- left_join(site_dose, site_pod,
+                           by = c("Site" = "Site"))
 
 # Summarize schedule data for possible stratifications and export
 sched_summary_site <- sched_hist_outlook %>%
@@ -167,42 +184,49 @@ sched_status_totals <- sched_status %>%
            `Pod Type`) %>%
   summarize(Total = sum(Count))
 
-sched_status_cast <- dcast(sched_status,
+# Weekly schedule through 3/31
+weekly_sched_status_cast <- dcast(sched_status,
                            Site + Dose + `Pod Type` ~ WeekNum + Dates,
                            fun.aggregate = sum,
                            value.var = "Count")
 
-sched_status_cast <- left_join(sched_status_cast, sched_status_totals,
+weekly_sched_status_cast <- left_join(weekly_sched_status_cast, sched_status_totals,
                                by = c("Site" = "Site",
                                       "Dose" = "Dose",
                                       "Pod Type" = "Pod Type"))
 
-
-# Create template dataframe
-site_dose <- data.frame("Site" = (sort(rep(sites, 
-                                          length(unique(sched_hist_outlook$Dose))))),
-                        "Dose" = rep(unique(sched_hist_outlook$Dose), 
-                                     length(sites)),
-                        stringsAsFactors = FALSE)
-
-site_pod <- data.frame("Site" = sort(rep(sites, 
-                                         length(unique(sched_hist_outlook$`Pod Type`)))),
-                       "Pod" = rep(unique(sched_hist_outlook$`Pod Type`), 
-                                   length(sites)),
-                       stringsAsFactors = FALSE)
-
-site_dose_pod <- left_join(site_dose, site_pod,
-                           by = c("Site" = "Site"))
-
-sched_status_cast <- left_join(site_dose_pod, sched_status_cast,
+weekly_sched_status_cast <- left_join(site_dose_pod, weekly_sched_status_cast,
                                by = c("Site" = "Site",
                                       "Dose" = "Dose",
                                       "Pod" = "Pod Type"))
 
-sched_status_cast <- sched_status_cast %>%
+weekly_sched_status_cast <- weekly_sched_status_cast %>%
   mutate(Site = factor(Site, levels = sites, ordered = TRUE),
          Pod = factor(Pod, levels = pod_type, ordered = TRUE)) %>%
   arrange(Site, Dose, Pod)
-                        
 
-write_xlsx(sched_status_cast, path = paste0(user_directory, "/AdHoc/Vaccine Schedule 021921 to 033121.xlsx"))
+# Daily schedule through 3/31
+daily_sched_status_cast <- dcast(sched_status,
+                                 Site + Dose + `Pod Type` ~ ApptDate,
+                                 fun.aggregate = sum,
+                                 value.var = "Count")
+
+daily_sched_status_cast <- left_join(daily_sched_status_cast, sched_status_totals,
+                                      by = c("Site" = "Site",
+                                             "Dose" = "Dose",
+                                             "Pod Type" = "Pod Type"))
+
+daily_sched_status_cast <- left_join(site_dose_pod, daily_sched_status_cast,
+                                      by = c("Site" = "Site",
+                                             "Dose" = "Dose",
+                                             "Pod" = "Pod Type"))
+
+daily_sched_status_cast <- daily_sched_status_cast %>%
+  mutate(Site = factor(Site, levels = sites, ordered = TRUE),
+         Pod = factor(Pod, levels = pod_type, ordered = TRUE)) %>%
+  arrange(Site, Dose, Pod)
+
+# Export daily and weekly schedule data
+export_list <- list("DailySched" = daily_sched_status_cast,
+                    "WeeklySched" = weekly_sched_status_cast)
+write_xlsx(export_list, path = paste0(user_directory, "/AdHoc/Daily and Weekly Schedule 021921 to 033121.xlsx"))
