@@ -46,7 +46,7 @@ user_path <- paste0(user_directory, "\\*.*")
 
 # Determine whether or not to update an existing repo
 initial_run <- FALSE
-update_repo <- TRUE
+update_repo <- FALSE
 
 # Determine whether or not to update walk-in analysis
 update_walkins <- FALSE
@@ -216,6 +216,43 @@ sched_breakdown_cast <- left_join(sch_breakdown_site_dose_pod, sched_breakdown_c
                                   by = c("Dose" = "Dose",
                                          "PodType" = "Pod Type",
                                          "Site" = "Site"))
+
+# Summarize schedule breakdown for next two weeks for Pfizer only -------------
+# Assumptions:
+# 1. Any scheduled dose 1 appointments will receive Pfizer
+# 2. Only scheduled dose 2 appointments with an arrived Moderna dose 1 
+# appointment will receive Moderna. Any other scheduled dose 2 appointments will
+# receive Pfizer
+
+# Determine MRNs that received Moderna for first dose
+dose1_moderna <- sched_to_date %>%
+  filter(Status2 %in% c("Arr") & Mfg == "Moderna" & Dose == 1) %>%
+  select(MRN)
+
+sched_to_date <- sched_to_date %>%
+  #Determine expected manufacturer for scheduled appointment based on above 
+  # assumptions
+  mutate(ExpSchMfg = ifelse(Status2 != "Sch", NA,
+                              ifelse(Dose == 1, "Pfizer",
+                                     ifelse(MRN %in% dose1_moderna$MRN,
+                                            "Moderna", "Pfizer"))))
+pfizer_sched_breakdown <- sched_to_date %>%
+  filter((Mfg == "Pfizer" | ExpSchMfg == "Pfizer") & 
+           ApptDate >= (today - 1) & ApptDate <= (today + 14)) %>%
+  group_by(Dose, `Pod Type`, Site, Status2, ApptDate) %>%
+  summarize(Count = n()) %>%
+  ungroup()
+
+pfizer_sched_breakdown_cast <- dcast(pfizer_sched_breakdown,
+                                     Dose + `Pod Type` + Site ~ Status2 + ApptDate,
+                                     value.var = "Count")
+
+# Merge Pfizer schedule with site-dose-pod template
+pfizer_sched_breakdown_cast <- left_join(sch_breakdown_site_dose_pod, 
+                                         pfizer_sched_breakdown_cast,
+                                         by = c("Dose" = "Dose",
+                                                "PodType" = "Pod Type",
+                                                "Site" = "Site"))
 
 # Summarize schedule for next vaccine inventory cycle for daily schedule target analysis ----------------------
 # Determine dates in this inventory cycle based on today's date and Tuesday of the next week
@@ -516,6 +553,7 @@ cast_melt_test <- melt(dose1_7day_walkins_summary,
 # Export schedule summary, schedule breakdown, and cumulative administed doses to excel file
 export_list <- list("SchedSummary" = sched_summary,
                     "SchedBreakdown" = sched_breakdown_cast,
+                    "Pfizer_SchedBreakdown" = pfizer_sched_breakdown_cast,
                     # "Sched_Targets_7Days" = sched_7days_format_jm,
                     "Sched_InvCycle_Site" = sched_inv_cycle_sites_jm,
                     "Sched_InvCycle_Sys" = sched_inv_cycle_sys_jm,
