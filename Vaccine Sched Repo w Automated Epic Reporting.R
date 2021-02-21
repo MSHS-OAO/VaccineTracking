@@ -46,7 +46,7 @@ user_path <- paste0(user_directory, "\\*.*")
 
 # Determine whether or not to update an existing repo
 initial_run <- FALSE
-update_repo <- FALSE
+update_repo <- TRUE
 
 # Determine whether or not to update walk-in analysis
 update_walkins <- FALSE
