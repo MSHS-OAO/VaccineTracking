@@ -1,17 +1,18 @@
-# Code for creating repository of COVID vaccine administration ----------------------
+# Code for creating repository of COVID vaccine administration -----------------
 
 #Install and load necessary packages --------------------
-#install.packages("readraw_dfl")
-#install.packages("writeraw_dfl")
-#install.packages("ggplot2")
-#install.packages("lubridate")
-#install.packages("dplyr")
-#install.packages("reshape2")
-#install.packages("svDialogs")
-#install.packages("stringr")
-#install.packages("formattable")
+# install.packages("readxl")
+# install.packages("writexl")
+# install.packages("ggplot2")
+# install.packages("lubridate")
+# install.packages("dplyr")
+# install.packages("reshape2")
+# install.packages("svDialogs")
+# install.packages("stringr")
+# install.packages("formattable")
+# install.packages("kableExtra")
 # install.packages("ggpubr")
-#install.package(zipcodeR)
+# install.packages("zipcodeR")
 
 #Analysis for weekend discharge tracking
 library(readxl)
@@ -35,7 +36,7 @@ library(zipcodeR)
 rm(list = ls())
 
 # Determine path for working directory
-if (list.files("J://") == "Presidents") {
+if ("Presidents" %in% list.files("J://")) {
   user_directory <- "J:/Presidents/HSPI-PM/Operations Analytics and Optimization/Projects/System Operations/COVID Vaccine"
 } else {
   user_directory <- "J:/deans/Presidents/HSPI-PM/Operations Analytics and Optimization/Projects/System Operations/COVID Vaccine"
@@ -567,5 +568,3 @@ export_list <- list("SchedSummary" = sched_summary,
 write_xlsx(export_list, path = paste0(user_directory, 
                                       "/R_Sched_Analysis_AM_Export/Auto Epic Report Sched Data Export ", 
                                       format(Sys.time(), "%m%d%y %H%M"), ".xlsx"))
-
-# Test line
