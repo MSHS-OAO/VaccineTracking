@@ -53,8 +53,8 @@ update_repo <- TRUE
 update_walkins <- FALSE
 
 # Import reference data for site and pod mappings
-site_mappings <- read_excel(paste0(user_directory, "/ScheduleData/Automation Ref 2021-02-24.xlsx"), sheet = "Site Mappings")
-pod_mappings <- read_excel(paste0(user_directory, "/ScheduleData/Automation Ref 2021-02-24.xlsx"), sheet = "Pod Mappings Simple")
+site_mappings <- read_excel(paste0(user_directory, "/ScheduleData/Automation Ref 2021-02-25.xlsx"), sheet = "Site Mappings")
+pod_mappings <- read_excel(paste0(user_directory, "/ScheduleData/Automation Ref 2021-02-25.xlsx"), sheet = "Pod Mappings Simple")
 
 # Store today's date
 today <- Sys.Date()
