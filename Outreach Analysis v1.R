@@ -167,15 +167,17 @@ sched_to_date <- left_join(sched_to_date,
 
 # Update scheduling grouper for same day appointments and other methods
 sched_to_date <- sched_to_date %>%
-  mutate(SchedulingSource = ifelse(is.na(SchedulingSource) &
-                                      `Same Day?` == "Same day",
-                                    "Same Day",
-                                    ifelse(is.na(SchedulingSource),
-                                           "Other", SchedulingSource)))
+  mutate(SchedulingSource = ifelse(is.na(SchedulingSource),
+                                   "Other", SchedulingSource))
+           # ifelse(is.na(SchedulingSource) &
+           #                            `Same Day?` == "Same day",
+           #                          "Same Day",
+           #                          ifelse(is.na(SchedulingSource),
+           #                                 "Other", SchedulingSource)))
 #
 # Subset schedule for appointments within date range of interest
 outreach_sched <- sched_to_date %>%
-  filter(DateOfInterest)
+  filter(DateOfInterest & Dose == 1)
 
 outreach_summary <- outreach_sched %>%
   group_by(SchedulingSource) %>%
@@ -194,6 +196,6 @@ outreach_list <- list("Summary" = outreach_summary,
 write_xlsx(outreach_list,
            path = 
              paste0(user_directory, "/AdHoc/Outreach Sched Analysis ",
-                    format(Sys.Date(), "%m-%d-%y"), ".xlsx"))
+                    format(Sys.time(), "%m-%d-%y %H%M"), ".xlsx"))
 
 
