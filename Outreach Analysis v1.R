@@ -184,6 +184,12 @@ outreach_summary <- outreach_sched %>%
   summarize(Count = n(), .groups = "keep") %>%
   arrange(-Count)
 
+other_summary <- outreach_sched %>%
+  filter(SchedulingSource == "Other") %>%
+  group_by(`Entry Person`) %>%
+  summarize(Count = n()) %>%
+  arrange(-Count)
+
 outreach_site_status_summary <- outreach_sched %>%
   group_by(SchedulingSource,
            Site,
@@ -191,6 +197,7 @@ outreach_site_status_summary <- outreach_sched %>%
   summarize(Count = n(), .groups = "keep")
 
 outreach_list <- list("Summary" = outreach_summary,
+                      "OtherBreakout" = other_summary,
                       "SiteAndApptStatus" = outreach_site_status_summary)
 
 write_xlsx(outreach_list,
