@@ -58,10 +58,10 @@ update_walkins <- FALSE
 
 # Import reference data for site and pod mappings
 site_mappings <- read_excel(paste0(user_directory, "/ScheduleData/",
-                                   "Automation Ref 2021-02-25.xlsx"),
+                                   "Automation Ref 2021-03-04.xlsx"),
                             sheet = "Site Mappings")
 pod_mappings <- read_excel(paste0(user_directory, "/ScheduleData/",
-                                  "Automation Ref 2021-02-25.xlsx"),
+                                  "Automation Ref 2021-03-04.xlsx"),
                            sheet = "Pod Mappings Simple")
 
 # Store today's date
@@ -78,13 +78,13 @@ all_dates <- all_dates %>%
          WeekNum = format(Date, "%U"))
 
 # Site order
-sites <- c("MSB", "MSBI", "MSH", "MSM", "MSQ", "MSW", "MSHS")
+sites <- c("MSB", "MSBI", "MSH", "MSM", "MSQ", "MSW", "MSVD", "MSHS")
 
 # Pod type order
 pod_type <- c("Employee", "Patient", "All")
 
 # Vaccine manufacturers
-mfg <- c("Pfizer", "Moderna")
+mfg <- c("Pfizer", "Moderna", "J&J")
 
 # NY zip codes
 ny_zips <- search_state("NY")
@@ -297,9 +297,10 @@ sched_to_date <- sched_to_date %>%
   #Determine expected manufacturer for scheduled appointment based on above
   # assumptions
   mutate(ExpSchMfg = ifelse(Status2 != "Sch", NA,
-                              ifelse(Dose == 1, "Pfizer",
-                                     ifelse(MRN %in% dose1_moderna$MRN,
-                                            "Moderna", "Pfizer"))))
+                            ifelse(Site == "MSVD", "J&J",
+                                   ifelse(Dose == 1, "Pfizer",
+                                          ifelse(MRN %in% dose1_moderna$MRN,
+                                                 "Moderna", "Pfizer")))))
 pfizer_sched_breakdown <- sched_to_date %>%
   filter((Mfg == "Pfizer" | ExpSchMfg == "Pfizer") &
            ApptDate >= (today - 1) & ApptDate <= (today + 14)) %>%
@@ -313,11 +314,13 @@ pfizer_sched_breakdown_cast <- dcast(pfizer_sched_breakdown,
                                      value.var = "Count")
 
 # Merge Pfizer schedule with site-dose-pod template
-pfizer_sched_breakdown_cast <- left_join(sch_breakdown_site_dose_pod,
-                                         pfizer_sched_breakdown_cast,
-                                         by = c("Dose" = "Dose",
-                                                "PodType" = "Pod Type",
-                                                "Site" = "Site"))
+pfizer_sched_breakdown_cast <- left_join(
+  sch_breakdown_site_dose_pod %>%
+    filter(Site != "MSVD"),
+  pfizer_sched_breakdown_cast,
+  by = c("Dose" = "Dose",
+         "PodType" = "Pod Type",
+         "Site" = "Site"))
 
 # Summarize schedule for next vaccine inventory cycle for dtarget analysis -----
 # Determine dates in this inventory cycle based on today's date and
