@@ -198,7 +198,11 @@ sched_to_date <- sched_to_date %>%
                     # Any immunizations with Moderna in text classified as
                     # Moderna, otherwise Pfizer
                     ifelse(str_detect(Immunizations, "Moderna"), "Moderna",
-                           "Pfizer"))),
+                           # Any immunizations with Johnson and Johnson are
+                           # classified as J&J
+                           ifelse(str_detect(Immunizations,
+                                             "Johnson and Johnson"),
+                                  "J&J", "Pfizer")))),
     # Determine week number of year
     WeekNum = format(ApptDate, "%U"),
     # Determine appointment day of week
