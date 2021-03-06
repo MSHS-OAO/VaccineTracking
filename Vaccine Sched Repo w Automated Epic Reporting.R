@@ -58,10 +58,10 @@ update_walkins <- FALSE
 
 # Import reference data for site and pod mappings
 site_mappings <- read_excel(paste0(user_directory, "/ScheduleData/",
-                                   "Automation Ref 2021-03-04.xlsx"),
+                                   "Automation Ref 2021-03-05.xlsx"),
                             sheet = "Site Mappings")
 pod_mappings <- read_excel(paste0(user_directory, "/ScheduleData/",
-                                  "Automation Ref 2021-03-04.xlsx"),
+                                  "Automation Ref 2021-03-05.xlsx"),
                            sheet = "Pod Mappings Simple")
 
 # Store today's date
@@ -78,7 +78,14 @@ all_dates <- all_dates %>%
          WeekNum = format(Date, "%U"))
 
 # Site order
-sites <- c("MSB", "MSBI", "MSH", "MSM", "MSQ", "MSW", "MSVD", "MSHS")
+sites <- c("MSB",
+           "MSBI",
+           "MSH",
+           "MSM",
+           "MSQ",
+           "MSW",
+           "MSVD",
+           "MSHS")
 
 # Pod type order
 pod_type <- c("Employee", "Patient", "All")
@@ -227,6 +234,10 @@ sched_summary <- sched_to_date %>%
   group_by(Site, `Pod Type`, Dose, ApptDate, NYZip, Status2) %>%
   summarize(Count = n())
 
+# Remove Network LI from sched_to_date now that data has been summarized
+sched_to_date <- sched_to_date %>%
+  filter(Site != "Network LI")
+
 # Summarize schedule breakdown for next 2 weeks and export --------------------
 # Format data
 sched_breakdown <- sched_to_date %>%
@@ -320,7 +331,7 @@ pfizer_sched_breakdown_cast <- dcast(pfizer_sched_breakdown,
 # Merge Pfizer schedule with site-dose-pod template
 pfizer_sched_breakdown_cast <- left_join(
   sch_breakdown_site_dose_pod %>%
-    filter(Site != "MSVD"),
+    filter(!Site %in% c("MSVD")),
   pfizer_sched_breakdown_cast,
   by = c("Dose" = "Dose",
          "PodType" = "Pod Type",
@@ -386,13 +397,15 @@ sched_inv_cycle_sites_jm <- left_join(sched_inv_cycle_all_sites_dates,
 
 # Determine schedule across system within this inventory cycle's date range
 sched_inv_cycle_pod_type_sys <- sched_to_date %>%
-  filter(ApptDate %in% sched_inv_cycle_dates & Status2 == "Sch") %>%
+  filter(ApptDate %in% sched_inv_cycle_dates &
+           Status2 == "Sch") %>%
   group_by(Dose, `Pod Type`, ApptDate) %>%
   summarize(Count = n()) %>%
   ungroup()
 
 sched_inv_cycle_all_pods_sys <- sched_to_date %>%
-  filter(ApptDate %in% sched_inv_cycle_dates & Status2 == "Sch") %>%
+  filter(ApptDate %in% sched_inv_cycle_dates &
+           Status2 == "Sch") %>%
   group_by(Dose, ApptDate) %>%
   summarize(`Pod Type` = "Total",
             Count = n()) %>%
@@ -508,14 +521,16 @@ admin_mfg_summary <- sched_to_date %>%
 
 # Create summary of administered doses prior to yesterday and yesterday
 admin_prior_yest_site <- sched_to_date %>%
-  filter(Status2 == "Arr" & ApptDate <= (today - 2)) %>%
+  filter(Status2 == "Arr" &
+           ApptDate <= (today - 2)) %>%
   group_by(Site, Mfg, Dose) %>%
   summarize(DateRange = paste0("Admin 12/15/20-",
                                format(today - 2, "%m/%d/%y")),
             Count = n())
 
 admin_yest_site <- sched_to_date %>%
-  filter(Status2 == "Arr" & ApptDate == (today - 1)) %>%
+  filter(Status2 == "Arr" &
+           ApptDate == (today - 1)) %>%
   group_by(Site, Mfg, Dose) %>%
   summarize(DateRange = paste0("Admin ", format(today - 1, "%m/%d/%y")),
             Count = n())
