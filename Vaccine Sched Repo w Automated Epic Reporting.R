@@ -58,10 +58,10 @@ update_walkins <- FALSE
 
 # Import reference data for site and pod mappings
 site_mappings <- read_excel(paste0(user_directory, "/ScheduleData/",
-                                   "Automation Ref 2021-03-05.xlsx"),
+                                   "Automation Ref 2021-03-08.xlsx"),
                             sheet = "Site Mappings")
 pod_mappings <- read_excel(paste0(user_directory, "/ScheduleData/",
-                                  "Automation Ref 2021-03-05.xlsx"),
+                                  "Automation Ref 2021-03-08.xlsx"),
                            sheet = "Pod Mappings Simple")
 
 # Store today's date
@@ -236,7 +236,7 @@ sched_summary <- sched_to_date %>%
 
 # Remove Network LI from sched_to_date now that data has been summarized
 sched_to_date <- sched_to_date %>%
-  filter(Site != "Network LI")
+  filter(!(Site %in% "Network LI"))
 
 # Summarize schedule breakdown for next 2 weeks and export --------------------
 # Format data
