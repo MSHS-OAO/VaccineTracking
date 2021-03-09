@@ -457,37 +457,37 @@ admin_doses_site_all_pods <-
   admin_doses_site_all_pods[, colnames(admin_doses_site_pod_type)]
 
 # Summarize administered doses across system and stratify by pod type
-admin_doses_system_pod_type <- sched_to_date %>%
-  filter(Status2 == "Arr") %>%
-  group_by(`Pod Type`, Dose) %>%
-  summarize(Site = "MSHS", DateRange = paste0(format(min(ApptDate), "%m/%d/%y"),
-                                              "-",
-                                              format(max(ApptDate), "%m/%d/%y")),
-            Count = n()) %>%
-  ungroup()
-
-admin_doses_system_pod_type <-
-  admin_doses_system_pod_type[, colnames(admin_doses_site_pod_type)]
+# admin_doses_system_pod_type <- sched_to_date %>%
+#   filter(Status2 == "Arr") %>%
+#   group_by(`Pod Type`, Dose) %>%
+#   summarize(Site = "MSHS", DateRange = paste0(format(min(ApptDate), "%m/%d/%y"),
+#                                               "-",
+#                                               format(max(ApptDate), "%m/%d/%y")),
+#             Count = n()) %>%
+#   ungroup()
+# 
+# admin_doses_system_pod_type <-
+#   admin_doses_system_pod_type[, colnames(admin_doses_site_pod_type)]
 
 # Summarize administered doses across system
-admin_doses_system_all_pods <- sched_to_date %>%
-  filter(Status2 == "Arr") %>%
-  group_by(Dose) %>%
-  summarize(Site = "MSHS",
-            `Pod Type` = "All",
-            DateRange = paste0(format(min(ApptDate), "%m/%d/%y"), "-",
-                               format(max(ApptDate), "%m/%d/%y")),
-            Count = n()) %>%
-  ungroup()
-
-admin_doses_system_all_pods <-
-  admin_doses_system_all_pods[, colnames(admin_doses_site_pod_type)]
+# admin_doses_system_all_pods <- sched_to_date %>%
+#   filter(Status2 == "Arr") %>%
+#   group_by(Dose) %>%
+#   summarize(Site = "MSHS",
+#             `Pod Type` = "All",
+#             DateRange = paste0(format(min(ApptDate), "%m/%d/%y"), "-",
+#                                format(max(ApptDate), "%m/%d/%y")),
+#             Count = n()) %>%
+#   ungroup()
+# 
+# admin_doses_system_all_pods <-
+#   admin_doses_system_all_pods[, colnames(admin_doses_site_pod_type)]
 
 # Combine administered data by pod type, across pods, and across system
 admin_doses_summary <- rbind(admin_doses_site_pod_type,
-                             admin_doses_site_all_pods,
-                             admin_doses_system_pod_type,
-                             admin_doses_system_all_pods)
+                             admin_doses_site_all_pods)
+                             # admin_doses_system_pod_type,
+                             # admin_doses_system_all_pods)
 
 admin_doses_summary <- admin_doses_summary %>%
   mutate(Dose = ifelse(Dose == 1, "Dose1", "Dose2"))
@@ -495,9 +495,8 @@ admin_doses_summary <- admin_doses_summary %>%
 admin_2nd_dose_remaining <- dcast(admin_doses_summary,
                                   Site + `Pod Type` ~ Dose, value.var = "Count")
 
-
 admin_2nd_dose_remaining <- admin_2nd_dose_remaining %>%
-  mutate(RemainingDose2 = Dose1 - Dose2,
+  mutate(RemainingDose2 = ifelse(Site %in% c("MSVD"), NA, Dose1 - Dose2),
          Site = factor(Site, levels = sites, ordered = TRUE),
          `Pod Type` = factor(`Pod Type`, levels = pod_type, ordered = TRUE))
 
@@ -511,6 +510,25 @@ admin_doses_table_export <- melt(admin_2nd_dose_remaining,
 admin_doses_table_export <- dcast(admin_doses_table_export,
                                   Site ~ variable + `Pod Type`,
                                   value.var = "value")
+
+# Determine MSHS total by summing columns
+admin_doses_system_summary <- data.frame(
+  t(colSums(
+    admin_doses_table_export[, c(2:ncol(admin_doses_table_export))],
+    na.rm = TRUE, dims = 1)))
+
+admin_doses_system_summary <- admin_doses_system_summary %>%
+  mutate(Site = "MSHS")
+
+admin_doses_system_summary <- admin_doses_system_summary[, colnames(admin_doses_table_export)]
+
+# Bind site and system data
+admin_doses_table_export <- rbind(admin_doses_table_export,
+                                  admin_doses_system_summary)
+
+# Arrange dataframe by site
+admin_doses_table_export <- admin_doses_table_export %>%
+  arrange(Site)
 
 # Stratify administered doses to date by manufacturer ------------------------
 # Create daily summary of administered doses by manufacturer
