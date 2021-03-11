@@ -38,17 +38,17 @@ user_path <- paste0(user_directory, "\\*.*")
 # Import reference data for site and pod mappings
 site_mappings <- read_excel(
   paste0(
-    user_directory, "/AdHoc/", "Automation Ref w Outreach 2021-03-04.xlsx"),
+    user_directory, "/AdHoc/", "Automation Ref w Outreach 2021-03-11.xlsx"),
   sheet = "Site Mappings")
 
 pod_mappings <- read_excel(
   paste0(
-    user_directory, "/AdHoc/", "Automation Ref w Outreach 2021-03-04.xlsx"),
+    user_directory, "/AdHoc/", "Automation Ref w Outreach 2021-03-11.xlsx"),
   sheet = "Pod Mappings Simple")
 
 scheduler_mappings <- read_excel(
   paste0(
-    user_directory, "/AdHoc/", "Automation Ref w Outreach 2021-03-04.xlsx"),
+    user_directory, "/AdHoc/", "Automation Ref w Outreach 2021-03-11.xlsx"),
   sheet = "Outreach Mappings")
 
 # Store today's date
@@ -77,8 +77,8 @@ mfg <- c("Pfizer", "Moderna", "J&J")
 ny_zips <- search_state("NY")
 
 # Select dates of interest
-start_date <- as.Date("2/24/21", format("%m/%d/%y"))
-end_date <- as.Date("2/28/21", format("%m/%d/%y"))
+start_date <- as.Date("3/9/21", format("%m/%d/%y"))
+end_date <- as.Date("3/11/21", format("%m/%d/%y"))
 
 # Import schedule repository
 sched_repo <- readRDS(
