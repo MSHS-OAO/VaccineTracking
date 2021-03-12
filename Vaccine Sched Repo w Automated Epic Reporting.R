@@ -58,10 +58,10 @@ update_walkins <- FALSE
 
 # Import reference data for site and pod mappings
 site_mappings <- read_excel(paste0(user_directory, "/ScheduleData/",
-                                   "Automation Ref 2021-03-08.xlsx"),
+                                   "Automation Ref 2021-03-12.xlsx"),
                             sheet = "Site Mappings")
 pod_mappings <- read_excel(paste0(user_directory, "/ScheduleData/",
-                                  "Automation Ref 2021-03-08.xlsx"),
+                                  "Automation Ref 2021-03-12.xlsx"),
                            sheet = "Pod Mappings Simple")
 
 # Store today's date
