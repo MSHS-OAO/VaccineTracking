@@ -232,6 +232,10 @@ sched_to_date <- sched_to_date %>%
 sched_to_date <- left_join(sched_to_date, site_mappings,
                            by = c("Department" = "Department"))
 
+# Roll up any Moderna administered at MSB for YWCA to MSH
+sched_to_date <- sched_to_date %>%
+  mutate(Site = ifelse(Site %in% c("MSB") & Mfg %in% c("Moderna"), "MSH", Site))
+
 # Crosswalk pod type (employee vs patient)
 sched_to_date <- left_join(sched_to_date,
                            pod_mappings[, c("Provider", "Pod Type")],
@@ -688,7 +692,7 @@ dose1_7day_walkins_summary <- dose1_7day_walkins_summary %>%
 
 # Reorder rows based on site and pod type
 dose1_7day_walkins_summary <- dose1_7day_walkins_summary %>%
-  mutate(Site = factor(Site, levels = sites, ordered = TRUE),
+  mutate(Site = factor(Site, levels = all_sites, ordered = TRUE),
          `Pod Type` = factor(`Pod Type`, levels = pod_type, ordered = TRUE))
 
 dose1_7day_walkins_summary <- dose1_7day_walkins_summary %>%
