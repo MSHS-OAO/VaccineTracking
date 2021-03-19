@@ -11,7 +11,9 @@
 #install.packages("stringr")
 #install.packages("formattable")
 #install.packages("ggpubr")
-#install.package(zipcodeR)
+#install.packages(zipcodeR)
+#install.packages("tidyr")
+# install.packages("janitor")
 
 #Analysis for weekend discharge tracking
 library(readxl)
@@ -30,6 +32,8 @@ library(knitr)
 library(kableExtra)
 library(rmarkdown)
 library(zipcodeR)
+library(tidyr)
+library(janitor)
 
 # Set working directory and select raw data ----------------------------
 rm(list = ls())
@@ -64,7 +68,7 @@ pod_mappings <- read_excel(paste0(user_directory, "/ScheduleData/",
                            sheet = "Pod Mappings Simple")
 
 # Store today's date
-today <- Sys.Date() - 1
+today <- Sys.Date() - 2
 
 # Site order
 all_sites <- c("MSB",
@@ -111,7 +115,7 @@ vacc_week_dates <- all_dates %>%
                      format(max(Date), "%m/%d/%y")))
 
 # Create variable with doses
-doses <- c(1, 2, "All")
+doses <- c("Dose1", "Dose2", "AllDoses")
 
 # Import raw data from Epic
 if (update_repo) {
@@ -177,7 +181,7 @@ mssn_admin <- read_excel(
 
 mssn_admin <- mssn_admin[1:nrow(mssn_admin) - 1, ]
 
-colnames(mssn_admin) <- c("ApptDate", "Dose1", "Dose2", "Total")
+colnames(mssn_admin) <- c("ApptDate", "Dose1", "Dose2", "AllDoses")
 
 
 # Format and analyze Epic schedule to date for dashboards ---------------------
@@ -186,8 +190,8 @@ epic_sched_to_date <- sched_repo
 epic_sched_to_date <- epic_sched_to_date %>%
   mutate(
     # Determine whether appointment is for dose 1 or dose 2
-    Dose = ifelse(str_detect(Type, "DOSE 1"), 1,
-                  ifelse(str_detect(Type, "DOSE 2"), 2, NA)),
+    Dose = ifelse(str_detect(Type, "DOSE 1"), "Dose1",
+                  ifelse(str_detect(Type, "DOSE 2"), "Dose2", NA)),
     # Determine appointment date, year, month, etc.
     ApptDate = date(Date),
     ApptYear = year(Date),
@@ -253,177 +257,110 @@ epic_sched_summary <- epic_sched_to_date %>%
            ApptDate,
            Status2) %>%
   summarize(Count = n(),
-            .groups = "keep")
+            .groups = "keep") %>%
+  pivot_wider(names_from = Dose,
+              values_from = Count) %>%
+  mutate(AllDoses = sum(Dose1, Dose2, na.rm = TRUE)) %>%
+  pivot_longer(cols = c("Dose1", "Dose2", "AllDoses"),
+               names_to = "Dose",
+               values_to = "Count") %>%
+  ungroup()
+
 
 # Melt MSSN data to format similar to Epic sites
-mssn_admin_to_date <- melt(mssn_admin,
-                           id = "ApptDate")
-
-mssn_admin_to_date <- mssn_admin_to_date %>%
-  filter (variable != "Total") %>%
-  mutate(Dose = ifelse(variable == "Dose1", 1, 2),
-         Count = value,
-         ApptDate = as.Date(ApptDate, format = "%B %d, %Y"),
-         Site = "MSSN",
+mssn_admin_to_date <- mssn_admin %>%
+  mutate(Site = "MSSN",
          Status2 = "Arr",
+         ApptDate = as.Date(ApptDate, format = "%B %d, %Y"),
          VaccWeek = as.numeric(
-           floor((ApptDate - vacc_start_first_sun) / 7) + 1),
-         variable = NULL,
-         value = NULL)
+           floor((ApptDate - vacc_start_first_sun) / 7 +1))) %>%
+  pivot_longer(cols = c("Dose1", "Dose2", "AllDoses"),
+               names_to = "Dose",
+               values_to = "Count")
 
 mssn_admin_to_date <- mssn_admin_to_date[, colnames(epic_sched_summary)]
 
 # Bind MSSN data with Epic sites data
-sched_summary <- rbind(epic_sched_summary, mssn_admin_to_date)
+daily_sched_summary <- rbind(epic_sched_summary, mssn_admin_to_date)
 
-sched_summary <- sched_summary %>%
+daily_sched_summary <- daily_sched_summary %>%
   left_join(vacc_week_dates, by = c("VaccWeek" = "VaccWeek"))
 
 # Summarize total doses to date through today
-admin_to_date_by_dose <- sched_summary %>%
+admin_to_date <- daily_sched_summary %>%
   filter(ApptDate <= today) %>%
   group_by(Site, Dose) %>%
   summarize(AdminDoses = sum(Count, na.rm = TRUE),
             .groups = "keep") %>%
   ungroup()
 
-admin_to_date_total <- sched_summary %>%
-  filter(ApptDate <= today) %>%
-  group_by(Site) %>%
-  summarize(AdminDoses = sum(Count, na.rm = TRUE),
-            Dose = "All",
-            .groups = "keep") %>%
-  ungroup()
-
-admin_to_date_total <- 
-  admin_to_date_total[, colnames(admin_to_date_by_dose)]
-
-admin_to_date <- rbind(admin_to_date_by_dose,
-                     admin_to_date_total)
-
 # Summarize administered doses for prior weeks -----------------
-prior_weeks_admin_by_dose <- sched_summary %>%
+prior_weeks_admin <- daily_sched_summary %>%
   filter(VaccWeek < this_week) %>%
   group_by(Site, Dose, VaccWeek, Dates) %>%
   summarize(AdminDoses = sum(Count, na.rm = TRUE),
             .groups = "keep") %>%
-  ungroup()
-
-prior_weeks_admin_total <- sched_summary %>%
-  filter(VaccWeek < this_week) %>%
-  group_by(Site, VaccWeek, Dates) %>%
-  summarize(AdminDoses = sum(Count, na.rm = TRUE),
-            Dose = "All",
-            .groups = "keep") %>%
-  ungroup()
-
-prior_weeks_admin_total <- 
-  prior_weeks_admin_total[, colnames(prior_weeks_admin_by_dose)]
-
-prior_weeks_admin <- rbind(prior_weeks_admin_by_dose,
-                           prior_weeks_admin_total)
-
-prior_weeks_admin <- prior_weeks_admin %>%
-  mutate(WkDates = paste0("Wk ", VaccWeek, ": ", Dates))
-
-prior_weeks_admin_cast <- dcast(prior_weeks_admin,
-                                Site + Dose ~ VaccWeek + Dates,
-                                value.var = "AdminDoses")
+  ungroup() %>%
+  pivot_wider(names_from = c(VaccWeek, Dates),
+              names_prefix = "Wk ",
+              names_sep = ": ",
+              values_from = AdminDoses)
 
 # Summarize total doses administered and scheduled this week through today -----
-this_week_admin_to_date_by_dose <- sched_summary %>%
+this_week_admin_to_date <- daily_sched_summary %>%
   filter(VaccWeek == this_week &
            ApptDate <= today) %>%
   group_by(Site, Dose, VaccWeek, Dates) %>%
-  summarize(AdminDoses =sum(Count, na.rm = TRUE),
-            .groups = "keep") %>%
-  ungroup()
-
-this_week_admin_to_date_total <- sched_summary %>%
-  filter(VaccWeek == this_week &
-           ApptDate <= today) %>%
-  group_by(Site, VaccWeek, Dates) %>%
   summarize(AdminDoses = sum(Count, na.rm = TRUE),
-            Dose = "All",
             .groups = "keep") %>%
-  ungroup()
-
-this_week_admin_to_date_total <-
-  this_week_admin_to_date_total[, colnames(this_week_admin_to_date_by_dose)]
-
-this_week_admin_to_date <- rbind(this_week_admin_to_date_by_dose,
-                                 this_week_admin_to_date_total)
-
-this_week_admin_to_date_cast <- dcast(this_week_admin_to_date,
-                                      Site + Dose ~ VaccWeek + Dates,
-                                      value.var = "AdminDoses")
+  ungroup() %>%
+  pivot_wider(names_from = c(VaccWeek, Dates),
+              names_prefix = "Wk ",
+              names_sep = ": ",
+              values_from = AdminDoses)
 
 # Summarize data for this week to date -------------------
-this_week_sched_by_dose <- sched_summary %>%
+this_week_daily_admin <- daily_sched_summary %>%
   filter(VaccWeek == this_week &
-           ApptDate <= today) %>%
-  group_by(Site, Dose, VaccWeek, ApptDate, Status2) %>%
-  summarize(AdminDoses = sum(Count, na.rm = TRUE),
-            .groups = "keep") %>%
-  ungroup()
-
-this_week_sched_total <- sched_summary %>%
-  filter(VaccWeek == this_week &
-           ApptDate <= today) %>%
-  group_by(Site, VaccWeek, ApptDate, Status2) %>%
-  summarize(AdminDoses = sum(Count, na.rm = TRUE),
-            Dose = "All",
-            .groups = "keep") %>%
-  ungroup()
-
-this_week_sched_total <- 
-  this_week_sched_total[, colnames(this_week_sched_by_dose)]
-
-this_week_sched <- rbind(this_week_sched_by_dose,
-                         this_week_sched_total)
-
-# Calculate expected totals for today
-todays_totals <- this_week_sched %>%
-  filter(ApptDate == today) %>%
+           ApptDate < today) %>%
   group_by(Site, Dose, VaccWeek, ApptDate) %>%
-  summarize(Status2 = "Total",
-            AdminDoses = sum(AdminDoses, na.rm = TRUE),
+  summarize(AdminDoses = sum(Count, na.rm = TRUE),
             .groups = "keep") %>%
-  ungroup()
-  
-this_week_sched <- rbind(this_week_sched,
-                         todays_totals)
+  ungroup() %>%
+  pivot_wider(names_from = c(VaccWeek, ApptDate),
+              names_prefix = "Wk ",
+              names_sep = c(": "),
+              values_from = AdminDoses,
+              names_sort = TRUE)
 
-this_week_sched_cast <- dcast(this_week_sched,
-                              Site + Dose ~ VaccWeek + ApptDate + Status2,
-                              value.var = "AdminDoses")
+# Summarize today's arrived and scheduled doses -------------
+todays_sched <- daily_sched_summary %>%
+  filter(ApptDate == today) %>%
+  group_by(Site, Dose, ApptDate, Status2) %>%
+  summarize(AdminDoses = sum(Count, na.rm = TRUE),
+            .groups = "keep") %>%
+  ungroup() %>%
+  pivot_wider(names_from = Status2,
+              values_from = AdminDoses) %>%
+  mutate(Total = sum(Arr, Sch, na.rm = TRUE),
+         VaccWeek = NULL) %>%
+  pivot_longer(cols = c(Arr, Sch, Total),
+               names_to = "ApptStatus",
+               values_to = "Count") %>%
+  pivot_wider(names_from = c(ApptDate, ApptStatus),
+              names_prefix = "Today's Sched: ",
+              values_from = c(Count))
 
 # Summarize scheduled data for the next 7 days ---------------
-next_7days_sched_by_dose <- sched_summary %>%
+next_7days_sched <- daily_sched_summary %>%
   filter(ApptDate %in% seq(from = today + 1, to = today + 7, by = 1)) %>%
   group_by(Site, Dose, ApptDate) %>%
   summarize(SchedVisits = sum(Count, na.rm = TRUE),
             .groups = "keep") %>%
-  ungroup()
-
-next_7days_sched_total <- sched_summary %>%
-  filter(ApptDate %in% seq(from = today + 1, to = today + 7, by = 1)) %>%
-  group_by(Site, ApptDate) %>%
-  summarize(SchedVisits = sum(Count, na.rm = TRUE),
-            Dose = "All",
-            .groups = "keep") %>%
-  ungroup()
-
-next_7days_sched_total <-
-  next_7days_sched_total[, colnames(next_7days_sched_by_dose)]
-
-next_7days_sched <- rbind(next_7days_sched_by_dose,
-                          next_7days_sched_total)
-
-next_7days_sched_cast <- dcast(next_7days_sched,
-                               Site + Dose ~ ApptDate,
-                               value.var = "SchedVisits")
-
+  ungroup() %>%
+  pivot_wider(names_from = ApptDate,
+              values_from = SchedVisits)
+  
 # Create a template of all sites, vaccine dates, and doses ---------
 site_rep <- data.frame("Site" = sort(rep(all_sites,
                                          length(doses))))
@@ -444,61 +381,49 @@ site_data_summary <-
       left_join(
         left_join(
           left_join(
-            # Second, join site and dose template with data from prior weeks
-            site_dose_rep,
-            admin_to_date,
+            left_join(
+              #First, join site and dose template with administered doses to date
+              site_dose_rep,
+              admin_to_date,
+              by = c("Site" = "Site", "Dose" = "Dose")),
+            # Second, join with administered doses from prior weeks
+            prior_weeks_admin,
             by = c("Site" = "Site", "Dose" = "Dose")),
-          prior_weeks_admin_cast,
+          # Third, join this week's doses administered/scheduled through today
+          this_week_admin_to_date,
           by = c("Site" = "Site", "Dose" = "Dose")),
-        # Third, join this week's doses administered/scheduled through today
-        this_week_admin_to_date_cast,
+        # Fourth, join this week's daily data through today
+        this_week_daily_admin,
         by = c("Site" = "Site", "Dose" = "Dose")),
-      # Fourth, join this week's daily data through today
-      this_week_sched_cast,
+      # Fifth, join today's arrived and scheduled appts
+      todays_sched,
       by = c("Site" = "Site", "Dose" = "Dose")),
-    # Fifth, join scheduled doses for the next 7 days
-    next_7days_sched_cast,
+    # Last, join scheduled doses for the next 7 days
+    next_7days_sched,
     by = c("Site" = "Site", "Dose" = "Dose"))
+
+# Determine system-wide totals for each dose
+system_wide_summary <- do.call(
+  #Combine list of dataframes into single dataframe
+  rbind, lapply(
+    # First, split dataframe into list of dataframes by dose type
+    site_data_summary %>%
+      group_split(Dose),
+    # Next, adorn totals for each dataframe
+    function (x)
+      x %>%
+      adorn_totals(where = "row",
+                   fill = unique(x$Dose),
+                   na.rm = TRUE,
+                   name = "MSHS",
+                   -Dose)))
       
 # Subset for first dose, second dose, and all doses
-all_doses_site <- site_data_summary %>%
-  filter(Dose == "All") %>%
-  mutate(Dose = NULL)
+all_doses <- system_wide_summary %>%
+  filter(Dose == "AllDoses")
 
-all_doses_system <- data.frame(
-  Site = "Total",
-  t(colSums(all_doses_site[, -1], na.rm = TRUE)))
+first_doses <- system_wide_summary %>%
+  filter(Dose == "Dose1")
 
-colnames(all_doses_system) <- colnames(all_doses_site)
-
-all_doses <- rbind(all_doses_site, all_doses_system)
-
-first_doses_site <- site_data_summary %>%
-  filter(Dose == "1") %>%
-  mutate(Dose = NULL)
-
-first_doses_system <- data.frame(
-  Site = "Total",
-  t(colSums(first_doses_site[, -1], na.rm = TRUE)))
-
-colnames(first_doses_system) <- colnames(first_doses_site)
-
-first_doses <- rbind(first_doses_site, first_doses_system)
-
-second_doses_site <- site_data_summary %>%
-  filter(Dose == "2") %>%
-  mutate(Dose = NULL)
-
-second_doses_system <- data.frame(
-  Site = "Total",
-  t(colSums(second_doses_site[, -1], na.rm = TRUE)))
-
-colnames(second_doses_system) <- colnames(second_doses_site)
-
-second_doses <- rbind(second_doses_site, second_doses_system)
-
-
-
-a <- seq_len(this_week)
-b <- sapply(a, function(x) paste0("Week ", x))
-
+second_doses <- system_wide_summary %>%
+  filter(Dose == "Dose2")
