@@ -1,13 +1,7 @@
 ---
 title: "MSHS COVID-19 Vaccinations"
-output: 
-  html_document:
-    toc: true
-    toc_depth: 4
-    toc_float: TRUE
+output: html_document
 ---
-
-##### Summary as of `r paste(format(Sys.Date(), "%m/%d/%y"), "3:40PM")`
 
 ```{r setup, include = FALSE}
 knitr::opts_chunk$set(echo = FALSE,
@@ -548,10 +542,9 @@ vaccine_admin_summary <- function(x, dose) {
 
 ```
 
+#### Administered & Scheduled Vaccines as of `r format(Sys.Date(), "%m/%d/%y")` 3:40PM {.tabset}
 
-
-#### All Doses<br>
-<p></p>
+##### All Doses
 ```{r Subset data and create kable for all doses administered}
 all_doses <- system_wide_summary %>%
   filter(Dose == "AllDoses") %>%
@@ -563,7 +556,7 @@ vaccine_admin_summary(x = all_doses, dose = "All Doses")
 ```
 <p></p>
 
-#### First Doses
+##### First Doses
 <p></p>
 ```{r Subset data and create kable for first doses administered}
 first_doses <- system_wide_summary %>%
@@ -576,7 +569,7 @@ vaccine_admin_summary(x = first_doses, dose = "Dose 1")
 ```
 
 <p></p>
-#### Second Doses
+##### Second Doses
 <p></p>
 ```{r Subset data and create kable for second doses administered}
 second_doses <- system_wide_summary %>%
