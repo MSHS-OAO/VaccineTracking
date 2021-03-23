@@ -155,7 +155,7 @@ if (update_repo) {
   
   raw_df <- read.csv(choose.files(
     default =
-      paste0(user_directory, "/Epic 340PM Sched All Status/*.*"),
+      paste0(user_directory, "/Epic PM Huddle Sched All Status/*.*"),
     caption = "Select this afternoon's Epic schedule"),
     stringsAsFactors = FALSE,
     check.names = FALSE)
