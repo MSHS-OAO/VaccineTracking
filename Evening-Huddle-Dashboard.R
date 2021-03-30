@@ -1,3 +1,13 @@
+if ("Presidents" %in% list.files("J://")) {
+  user_directory <- paste0("J:/Presidents/HSPI-PM/",
+                           "Operations Analytics and Optimization/Projects/",
+                           "System Operations/COVID Vaccine")
+} else {
+  user_directory <- paste0("J:/deans/Presidents/HSPI-PM/",
+                           "Operations Analytics and Optimization/Projects/",
+                           "System Operations/COVID Vaccine")
+}
+
 rmarkdown::render("Evening-Huddle-Stats.Rmd",
                   output_file = paste0(user_directory,
                                        "/Daily PM Huddle Output/",

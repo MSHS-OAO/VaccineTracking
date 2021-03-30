@@ -323,6 +323,34 @@ daily_sched_summary <- daily_sched_summary %>%
 ```
 
 ```{r Create and combine tables with vaccine administration and schedule data}
+# Create a template of all sites, vaccine dates, and doses ---------
+site_rep <- data.frame("Site" = sort(rep(all_sites,
+                                         length(doses))))
+
+dose_rep <- data.frame("Dose" = rep(doses,
+                                    length(all_sites)))
+
+site_dose_rep <- cbind(site_rep, dose_rep)
+
+site_dose_rep <- site_dose_rep %>%
+  mutate(Site = factor(Site, levels = all_sites, ordered = TRUE)) %>%
+  arrange(Site, Dose)
+
+# Create template of next 7 days for each site and dose to ensure holidays are included
+next_7days <- seq(from = today + 1, to = today + 7, by = 1)
+
+next_7days_rep <- data.frame("ApptDate" = rep(next_7days,
+                                          length(all_sites)))
+
+site_next_7days_rep <- data.frame("Site" = sort(rep(all_sites,
+                                                    length(next_7days))))
+
+site_next_7days_templ <- cbind(site_next_7days_rep, next_7days_rep)
+
+site_dose_next_7days_templ <- left_join(site_dose_rep,
+                                        site_next_7days_templ,
+                                        by = c("Site" = "Site"))
+
 # Summarize total doses to date through today -------------
 admin_to_date <- daily_sched_summary %>%
   filter(ApptDate <= today) %>%
@@ -389,27 +417,22 @@ todays_sched <- daily_sched_summary %>%
 
 # Summarize scheduled data for the next 7 days ---------------
 next_7days_sched <- daily_sched_summary %>%
-  filter(ApptDate %in% seq(from = today + 1, to = today + 7, by = 1)) %>%
+  filter(ApptDate %in% next_7days) %>%
   group_by(Site, Dose, ApptDate) %>%
   summarize(SchedVisits = sum(Count, na.rm = TRUE),
             .groups = "keep") %>%
-  ungroup() %>%
+  ungroup()
+
+next_7days_sched <- left_join(site_dose_next_7days_templ, next_7days_sched,
+                              by = c("Site" = "Site",
+                                     "Dose" = "Dose",
+                                     "ApptDate" = "ApptDate"))
+
+next_7days_sched <- next_7days_sched %>%
   pivot_wider(names_from = ApptDate,
               values_from = SchedVisits,
               names_sort = TRUE)
 
-# Create a template of all sites, vaccine dates, and doses ---------
-site_rep <- data.frame("Site" = sort(rep(all_sites,
-                                         length(doses))))
-
-dose_rep <- data.frame("Dose" = rep(doses,
-                                    length(all_sites)))
-
-site_dose_rep <- cbind(site_rep, dose_rep)
-
-site_dose_rep <- site_dose_rep %>%
-  mutate(Site = factor(Site, levels = all_sites, ordered = TRUE)) %>%
-  arrange(Site, Dose)
 
 # Combine all tables
 site_data_summary <- 
