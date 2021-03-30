@@ -1,3 +1,5 @@
+rm(list = ls())
+
 if ("Presidents" %in% list.files("J://")) {
   user_directory <- paste0("J:/Presidents/HSPI-PM/",
                            "Operations Analytics and Optimization/Projects/",
