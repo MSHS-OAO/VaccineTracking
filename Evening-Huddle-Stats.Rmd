@@ -336,6 +336,27 @@ site_dose_rep <- site_dose_rep %>%
   mutate(Site = factor(Site, levels = all_sites, ordered = TRUE)) %>%
   arrange(Site, Dose)
 
+# Create a template of this week's days for each site and dose to ensure holidays are included
+this_week_prior_days <- all_dates %>%
+  filter(VaccWeek == this_week &
+           Date < today)
+
+colnames(this_week_prior_days) <- c("ApptDate", "VaccWeek")
+
+this_week_prior_days_rep <- bind_rows(replicate(length(all_sites),
+                                              this_week_prior_days,
+                                              simplify = FALSE))
+
+site_this_week_prior_days_rep <- data.frame("Site" = sort(
+  rep(all_sites, nrow(this_week_prior_days))))
+
+site_this_week_prior_days_templ <- cbind(site_this_week_prior_days_rep,
+                                     this_week_prior_days_rep)
+
+site_dose_this_week_prior_days_templ <- left_join(site_dose_rep,
+                                                site_this_week_prior_days_templ,
+                                                by = c("Site" = "Site"))
+
 # Create template of next 7 days for each site and dose to ensure holidays are included
 next_7days <- seq(from = today + 1, to = today + 7, by = 1)
 
@@ -388,10 +409,21 @@ this_week_admin_to_date <- daily_sched_summary %>%
 this_week_daily_admin <- daily_sched_summary %>%
   filter(VaccWeek == this_week &
            ApptDate < today) %>%
-  group_by(Site, Dose, VaccWeek, ApptDate) %>%
+  group_by(Site, Dose, ApptDate) %>%
   summarize(AdminDoses = sum(Count, na.rm = TRUE),
             .groups = "keep") %>%
-  ungroup() %>%
+  ungroup()
+
+# Combine with template to ensure holidays are included
+this_week_daily_admin <- left_join(site_dose_this_week_prior_days_templ,
+                                   this_week_daily_admin,
+                                   by = c("Site" = "Site",
+                                          "Dose" = "Dose",
+                                          "ApptDate" = "ApptDate"))
+
+
+# Pivot wider to get desired format
+this_week_daily_admin <- this_week_daily_admin %>%
   pivot_wider(names_from = c(VaccWeek, ApptDate),
               names_prefix = "Wk ",
               names_sep = c(": "),
@@ -489,11 +521,15 @@ vaccine_admin_summary <- function(x, dose) {
                    mutate(Title = paste0("Wk ", VaccWeek, ": ", Dates)))$Title
   
   # Determine dates this week through yesterday
+  # this_weeks_dates <- format(
+  # sort(unique(daily_sched_summary %>%
+  #               filter(VaccWeek == this_week &
+  #                        ApptDate < today) %>%
+  #               select(ApptDate))$ApptDate), "%m/%d/%y")
+  
   this_weeks_dates <- format(
-  sort(unique(daily_sched_summary %>%
-                filter(VaccWeek == this_week &
-                         ApptDate < today) %>%
-                select(ApptDate))$ApptDate), "%m/%d/%y")
+    sort(this_week_prior_days %>%
+           select(ApptDate))$ApptDate, "%m/%d/%y")
   
   # Create column names for today's data
   todays_cols <- c(paste(format(today, "%m/%d/%y"), " - Arrived"),
