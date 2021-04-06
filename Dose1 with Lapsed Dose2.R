@@ -98,7 +98,7 @@ mfg <- c("Pfizer", "Moderna", "J&J")
 ny_zips <- search_state("NY")
 
 # Dose 1 cutoff date
-dose1_date <- as.Date("2/21/21", format = "%m/%d/%y")
+dose1_date <- as.Date("2/28/21", format = "%m/%d/%y")
 
 # Import schedule repository
 sched_repo <- readRDS(choose.files(default = paste0(user_directory,
