@@ -98,7 +98,7 @@ mfg <- c("Pfizer", "Moderna", "J&J")
 ny_zips <- search_state("NY")
 
 # Dose 1 cutoff date
-dose1_date <- as.Date("2/28/21", format = "%m/%d/%y")
+dose1_date <- as.Date("2/21/21", format = "%m/%d/%y")
 
 # Import schedule repository
 sched_repo <- readRDS(choose.files(default = paste0(user_directory,
@@ -206,7 +206,9 @@ dose1_mrns_summary <- dose1_mrns %>%
                fill = "-",
                na.rm = TRUE,
                name = "MSHS") %>%
-  mutate(PercentNoArrDose2 = percent(NoArrDose2 / (NoArrDose2 + ArrDose2), 0.1))
+  mutate(AdminDose1 = NoArrDose2 + ArrDose2,
+    PercentNoArrDose2 = percent(NoArrDose2 / AdminDose1, 0.1)) %>%
+  select(Site, AdminDose1, NoArrDose2, ArrDose2, PercentNoArrDose2)
 
 # Create list of MRN without Dose 2
 dose1_mrns_no_dose2 <- dose1_mrns %>%
@@ -214,4 +216,11 @@ dose1_mrns_no_dose2 <- dose1_mrns %>%
 
 random <- dose1_mrns_no_dose2[sample.int(nrow(dose1_mrns_no_dose2), 10), "MRN"]
 
-random_mrns
+write_xlsx(dose1_mrns_summary, path = paste0(
+  user_directory,
+  "/AdHoc/Dose1 without Arr Dose2 Through ",
+  format(dose1_date, "%Y-%m-%d"),
+  ".xlsx"))
+
+
+
