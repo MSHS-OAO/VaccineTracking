@@ -109,7 +109,6 @@ mfg <- c("Pfizer", "Moderna", "J&J")
 # NY zip codes
 ny_zips <- search_state("NY")
 
-
 # Import raw data from Epic
 if (update_repo) {
   if (initial_run) {
@@ -216,13 +215,16 @@ sched_to_date <- sched_to_date %>%
     # Determine manufacturer based on immunization field
     Mfg = #Keep manufacturer as NA if the appointment hasn't been arrived
       ifelse(Status2 != "Arr", NA,
-             # Any immunizations with Moderna in text classified as Moderna
-             ifelse(str_detect(Immunizations, "Moderna"), "Moderna",
-                    # Any visiting docs or Johnson and Johnson immunizations
-                    # classified as J&J
-                    ifelse(str_detect(Department, "VISITING DOCS") |
-                             str_detect(Immunizations, "Johnson and Johnson"),
-                                        "J&J", "Pfizer"))),
+             # Any blank immunizations assumed to be Pfizer
+             ifelse(is.na(Immunizations), "Pfizer",
+                    # Any immunizations with Moderna in text classified as Moderna
+                    ifelse(str_detect(Immunizations, "Moderna"), "Moderna",
+                           # Any visiting docs or Johnson and Johnson
+                           # immunizations classified as J&J
+                           ifelse(str_detect(Department, "VISITING DOCS") |
+                                    str_detect(Immunizations,
+                                               "Johnson and Johnson"),
+                                  "J&J", "Pfizer")))),
     # Determine week number of year
     WeekNum = format(ApptDate, "%U"),
     # Determine appointment day of week
@@ -271,6 +273,7 @@ sched_breakdown <- sched_breakdown[order(sched_breakdown$Dose,
 
 # Create template dataframe of all sites, dose, and pod type combinations to
 # ensure all are included even if there are no scheduled appointments
+# Repeat dose types
 doses_templ <- data.frame(
   "Dose" = rep(c(1:2),
                length(all_sites)))
@@ -278,6 +281,7 @@ doses_templ <- data.frame(
 doses_templ <- doses_templ %>%
   arrange(Dose)
 
+# Repeat pod types
 pods_templ <- data.frame(
   "PodType" = rep(pod_type[1:2],
                   length(all_sites)),
@@ -286,6 +290,7 @@ pods_templ <- data.frame(
 pods_templ <- pods_templ %>%
   arrange(PodType)
 
+# Repeat dates for next 2 weeks
 dates_14days <- seq(from = today - 1, to = today + 14, by = 1)
 
 dates_templ <- data.frame(
@@ -296,25 +301,46 @@ dates_templ <- data.frame(
 dates_templ <- dates_templ %>%
   arrange(Date)
 
+# Repeat vaccine manufacturers
+mfg_templ <- data.frame(
+  "Mfg" = rep(mfg,
+              length(all_sites)),
+  stringsAsFactors = FALSE)
+
+mfg_templ <- mfg_templ %>%
+  mutate(Mfg = factor(Mfg, levels = mfg, ordered = TRUE)) %>%
+  arrange(Mfg) %>%
+  mutate(Mfg = as.character(Mfg))
+
+# Combine site and doses
 site_doses_templ <- data.frame(
   "Site" = rep(all_sites, 2),
   "Dose" = doses_templ,
   stringsAsFactors = FALSE)
 
+# Combine site and pods
 site_pods_templ <- data.frame(
   "Site" = rep(all_sites, 2),
   "PodType" = pods_templ,
   stringsAsFactors = FALSE)
 
+# Combine site and dates
 site_dates_templ <- data.frame(
   "Site" = rep(all_sites, length(dates_14days)),
   "Date" = dates_templ,
   stringsAsFactors = FALSE)
 
+# Combine site and manufacturer
+site_mfg_templ <- data.frame(
+  "Site" = rep(all_sites, length(mfg)),
+  "Mfg" = mfg_templ)
+
+# Combine site, dose, and pods
 site_dose_pod_templ <- left_join(site_doses_templ,
                                  site_pods_templ,
                                  by = c("Site" = "Site"))
 
+# Combine site, dose, pods, and dates
 site_dose_pod_date_templ <- left_join(site_dates_templ,
                                       site_dose_pod_templ,
                                       by = c("Site" = "Site"))
@@ -323,6 +349,16 @@ site_dose_pod_date_templ <- site_dose_pod_date_templ %>%
   # select(Dose, PodType, Site) %>%
   mutate(Site = factor(Site, levels = all_sites, ordered = TRUE)) %>%
   arrange(Dose, PodType, Site, Date)
+
+# Combine site, dose, and manufacturer
+site_dose_mfg_templ <- left_join(site_doses_templ,
+                                 site_mfg_templ,
+                                 by = c("Site" = "Site"))
+
+# Combine site, dose, manufacturer, and dates
+site_dose_mfg_date_templ <- left_join(site_dates_templ,
+                                      site_dose_mfg_templ,
+                                      by = c("Site" = "Site"))
 
 # Merge template dataframe with schedule breakdown data
 sched_breakdown <- left_join(site_dose_pod_date_templ,
@@ -367,7 +403,42 @@ city_sites_sched <- city_sites_sched %>%
                             ifelse(Site == "MSVD", "J&J",
                                    ifelse(Dose == 1, "Pfizer",
                                           ifelse(MRN %in% dose1_moderna$MRN,
-                                                 "Moderna", "Pfizer")))))
+                                                 "Moderna", "Pfizer")))),
+         MfgRollUp = ifelse(is.na(Mfg) & is.na(ExpSchMfg), NA,
+                            ifelse(is.na(ExpSchMfg), Mfg, ExpSchMfg)))
+
+mfg_sched_breakdown <- city_sites_sched %>%
+  filter(!is.na(MfgRollUp) &
+         ApptDate >= (today - 1) &
+           ApptDate <= (today + 14)) %>%
+  group_by(Dose, MfgRollUp, Site, Status2, ApptDate) %>%
+  summarize(Count = n(), .groups = "keep") %>%
+  ungroup()
+
+mfg_templ <- site_dose_mfg_date_templ %>%
+  filter(Site %in% city_sites)
+
+mfg_sched_breakdown <- left_join(mfg_templ,
+                                 mfg_sched_breakdown,
+                                 by = c("Dose" = "Dose",
+                                        "Mfg" = "MfgRollUp",
+                                        "Site" = "Site",
+                                        "Date" = "ApptDate"))
+
+# Replace NA in schedule breakdown and pivot wider for desired output
+mfg_sched_breakdown_cast <- mfg_sched_breakdown %>%
+  mutate(Status2 = ifelse(is.na(Status2) & Date < today, "Arr",
+                          ifelse(is.na(Status2) & Date >= today, "Sch",
+                                 Status2)),
+         Count = replace_na(Count, 0)) %>%
+  pivot_wider(id_cols = c(Dose, Mfg, Site),
+              names_from = c(Status2, Date),
+              values_from = Count) %>%
+  mutate(Site = factor(Site, levels = city_sites, ordered = TRUE),
+         Mfg = factor(Mfg, levels = mfg, ordered = TRUE)) %>%
+  arrange(Dose, Mfg, Site)
+
+# Create schedule breakdown for Pfizer only
 pfizer_sched_breakdown <- city_sites_sched %>%
   filter((Mfg == "Pfizer" | ExpSchMfg == "Pfizer") &
            ApptDate >= (today - 1) & ApptDate <= (today + 14)) %>%
@@ -822,6 +893,7 @@ cast_melt_test <- melt(dose1_7day_walkins_summary,
 # doses to excel file
 export_list <- list("SchedSummary" = sched_summary,
                     "SchedBreakdown" = sched_breakdown_cast,
+                    "Mfg_SchedBreakdown" = mfg_sched_breakdown_cast,
                     "Pfizer_SchedBreakdown" = pfizer_sched_breakdown_cast,
                     # "Sched_Targets_7Days" = sched_7days_format_jm,
                     "Sched_InvCycle_Site" = sched_inv_cycle_site,
