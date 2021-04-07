@@ -97,8 +97,11 @@ mfg <- c("Pfizer", "Moderna", "J&J")
 # NY zip codes
 ny_zips <- search_state("NY")
 
+# Dose 1 start date
+dose1_start_date <- as.Date("2/15/21", format = "%m/%d/%y")
+
 # Dose 1 cutoff date
-dose1_date <- as.Date("2/28/21", format = "%m/%d/%y")
+dose1_end_date <- as.Date("2/28/21", format = "%m/%d/%y")
 
 # Import schedule repository
 sched_repo <- readRDS(choose.files(default = paste0(user_directory,
@@ -165,7 +168,8 @@ sched_to_date <- left_join(sched_to_date, site_mappings,
 dose1_mrns <- sched_to_date %>%
   filter(Dose == 1 &
            Status2 == "Arr" &
-           ApptDate <= dose1_date) %>%
+           ApptDate >= dose1_start_date &
+           ApptDate <= dose1_end_date) %>%
   select(Site, MRN)
 
 dose1_mrns <- unique(dose1_mrns)
@@ -188,7 +192,8 @@ dose1_mrns <- dose1_mrns %>%
 # Identify MRNs with an administered Dose 2
 dose2_mrns <- sched_to_date %>%
   filter(Dose == 2 &
-           Status2 == "Arr")
+           Status2 == "Arr"  &
+           ApptDate > dose1_start_date)
 
 # Determine if patients with administered Dose 1 also received a Dose 2
 dose1_mrns <- dose1_mrns %>%
