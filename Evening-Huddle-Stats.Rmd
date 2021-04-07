@@ -528,8 +528,8 @@ vaccine_admin_summary <- function(x, dose) {
   #               select(ApptDate))$ApptDate), "%m/%d/%y")
   
   this_weeks_dates <- format(
-    sort(this_week_prior_days %>%
-           select(ApptDate))$ApptDate, "%m/%d/%y")
+    sort((this_week_prior_days %>%
+           select(ApptDate))$ApptDate), "%m/%d/%y")
   
   # Create column names for today's data
   todays_cols <- c(paste(format(today, "%m/%d/%y"), " - Arrived"),
