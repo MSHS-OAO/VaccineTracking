@@ -60,10 +60,10 @@ update_walkins <- FALSE
 
 # Import reference data for site and pod mappings
 site_mappings <- read_excel(paste0(user_directory, "/ScheduleData/",
-                                   "Automation Ref 2021-04-08.xlsx"),
+                                   "Automation Ref 2021-04-14.xlsx"),
                             sheet = "Site Mappings")
 pod_mappings <- read_excel(paste0(user_directory, "/ScheduleData/",
-                                  "Automation Ref 2021-04-08.xlsx"),
+                                  "Automation Ref 2021-04-14.xlsx"),
                            sheet = "Pod Mappings Simple")
 
 # Store today's date
@@ -242,7 +242,7 @@ sched_to_date <- sched_to_date %>%
 
 # Crosswalk pod type (employee vs patient)
 sched_to_date <- left_join(sched_to_date,
-                           pod_mappings[, c("Provider", "Pod Type")],
+                           unique(pod_mappings[, c("Provider", "Pod Type")]),
                            by = c("Provider/Resource" = "Provider"))
 
 # Assume any pods without a mapping are patient pods
@@ -252,10 +252,6 @@ sched_to_date[is.na(sched_to_date$`Pod Type`), "Pod Type"] <- "Patient"
 sched_summary <- sched_to_date %>%
   group_by(Site, `Pod Type`, Dose, ApptDate, NYZip, Status2) %>%
   summarize(Count = n())
-
-# # Remove Network LI from sched_to_date now that data has been summarized
-# sched_to_date <- sched_to_date %>%
-#   filter(!(Site %in% "Network LI"))
 
 # Summarize schedule breakdown for next 2 weeks and export --------------------
 # Format data
