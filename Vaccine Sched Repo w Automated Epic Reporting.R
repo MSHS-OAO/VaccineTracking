@@ -182,6 +182,8 @@ sched_to_date <- sched_repo
 
 sched_to_date <- sched_to_date %>%
   mutate(
+    # Update timezones to EST if imported as UTC
+    `Appt Time` = with_tz(`Appt Time`, tzone = "EST"),
     # Determine whether appointment is for dose 1 or dose 2
     Dose = ifelse(str_detect(Type, "DOSE 1"), 1,
                   ifelse(str_detect(Type, "DOSE 2"), 2, NA)),
