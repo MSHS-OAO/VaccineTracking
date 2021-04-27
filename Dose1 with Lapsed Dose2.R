@@ -98,10 +98,10 @@ mfg <- c("Pfizer", "Moderna", "J&J")
 ny_zips <- search_state("NY")
 
 # Dose 1 start date
-dose1_start_date <- as.Date("2/15/21", format = "%m/%d/%y")
+dose1_start_date <- as.Date("12/15/20", format = "%m/%d/%y")
 
 # Dose 1 cutoff date
-dose1_end_date <- as.Date("2/28/21", format = "%m/%d/%y")
+dose1_end_date <- as.Date("3/26/21", format = "%m/%d/%y")
 
 # Import schedule repository
 sched_repo <- readRDS(choose.files(default = paste0(user_directory,
@@ -169,7 +169,8 @@ dose1_mrns <- sched_to_date %>%
   filter(Dose == 1 &
            Status2 == "Arr" &
            ApptDate >= dose1_start_date &
-           ApptDate <= dose1_end_date) %>%
+           ApptDate <= dose1_end_date &
+           Mfg != "J&J") %>%
   select(Site, MRN)
 
 dose1_mrns <- unique(dose1_mrns)
@@ -224,7 +225,8 @@ random <- dose1_mrns_no_dose2[sample.int(nrow(dose1_mrns_no_dose2), 10), "MRN"]
 write_xlsx(dose1_mrns_summary, path = paste0(
   user_directory,
   "/AdHoc/Dose1 without Arr Dose2 Through ",
-  format(dose1_date, "%Y-%m-%d"),
+  format(dose1_end_date, "%Y-%m-%d"),
+  " Updated ", Sys.Date(),
   ".xlsx"))
 
 
