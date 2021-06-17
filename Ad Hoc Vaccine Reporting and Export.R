@@ -53,7 +53,6 @@ if ("Presidents" %in% list.files("J://")) {
 user_path <- paste0(user_directory, "\\*.*")
 
 # Determine whether or not to update an existing repo
-initial_run <- FALSE
 update_repo <- TRUE
 
 # Determine whether or not to update walk-in analysis
@@ -110,87 +109,18 @@ mfg <- c("Pfizer", "Moderna", "J&J")
 # NY zip codes
 ny_zips <- search_state("NY")
 
-# Import raw data from Epic
-if (update_repo) {
-  if (initial_run) {
-    raw_df <- read_excel(choose.files(default = paste0(user_directory,
-                                                       "/ScheduleData/*.*"),
-                                      caption = "Select initial Epic schedule"),
-                         col_names = TRUE, na = c("", "NA"))
-  } else {
-    # sched_repo <- read_excel(choose.files(default = user_path,
-    # caption = "Select schedule repository"),
-    #                       col_names = TRUE, na = c("", "NA"))
-    sched_repo <- readRDS(choose.files(default = paste0(user_directory,
-                                                        "/R_Sched_AM_Repo/*.*"),
-                                       caption = "Select schedule repository"))
-    #
-    # # # Convert appointment date in schedule repository from posixct to date
-    # # sched_repo <- sched_repo %>%
-    # #   mutate(ApptDate = date(ApptDate))
-    #
-    # raw_df <- read.csv(choose.files(
-    #   default =
-    #     paste0(user_directory, "/Epic Auto Report Sched All Status/*.*"),
-    #   caption = "Select current Epic schedule"),
-    #   stringsAsFactors = FALSE,
-    #   check.names = FALSE)
-  }
-
-  # new_sched <- raw_df
-  #
-  # # Remove test patient
-  # new_sched <- new_sched[new_sched$Patient != "Patient, Test", ]
-  #
-  # # Update data classes from .csv schedule import to match repository structure
-  # new_sched <- new_sched %>%
-  #   mutate(DOB = as.Date(DOB, format = "%m/%d/%Y"),
-  #          `Made Date` = as.Date(`Made Date`, format = "%m/%d/%y"),
-  #          Date = as.Date(Date, format = "%m/%d/%Y"),
-  #          `Appt Time` = as.POSIXct(paste("1899-12-31 ", `Appt Time`),
-  #                                   tz = "", format = "%Y-%m-%d %H:%M %p"),
-  #          `ZIP Code` = substr(`ZIP Code`, 2, nchar(`ZIP Code`)))
-  #
-  # # Determine dates in new report
-  # current_dates <- sort(unique(new_sched$Date))
-
-  if (initial_run) {
-    # sched_repo <- new_sched
-  } else {
-    # Update schedule repository by removing duplicate dates and adding data
-    # from new report
-    # sched_repo <- sched_repo %>%
-    #   filter(!(Date >= current_dates[1]))
-    # sched_repo <- rbind(sched_repo, new_sched)
-  }
-
-  # saveRDS(sched_repo, paste0(user_directory, "/R_Sched_AM_Repo/",
-  #                            "Auto Epic Report Sched ",
-  #                            format(min(sched_repo$Date), "%m%d%y"), " to ",
-  #                            format(max(sched_repo$Date), "%m%d%y"),
-  #                            " on ", format(Sys.time(), "%m%d%y %H%M"), ".rds"))
-
-} else {
-
-  # sched_repo <- readRDS(choose.files(default = paste0(user_directory,
-  #                                                     "/R_Sched_AM_Repo/*.*"),
-  #                                    caption = "Select schedule repository"))
-
-}
-
-
-# Select most recent schedule repository
+# Import schedule repository and determine last date it was updated
 sched_repo_file <- choose.files(default = paste0(user_directory,
                                                  "/R_Sched_AM_Repo/*.*"))
 
 sched_repo <- readRDS(sched_repo_file)
 sched_repo_update_date <- date(file.info(sched_repo_file)$ctime)
 
-last_report_date <- sched_repo_update_date - 1
-
-new_report_dates <- seq.Date(last_report_date + 1, today - 1, by = 1)
+# Determine date range of reports to add to repository
+new_report_dates <- seq.Date(sched_repo_update_date, today - 1, by = 1)
 new_report_dates_pattern <- format(new_report_dates, "%Y%m%d")
 
+# Find list of reports
 file_list_vacc_sched <- list.files(
   path = paste0(user_directory,
                 "/Epic Auto Report Sched All Status"),
@@ -199,6 +129,7 @@ file_list_vacc_sched <- list.files(
                    ".*.csv",
                    collapse = "|"))
 
+# Import reports and add a column with report name and report date
 import_new_reports <- map_df(
   file_list_vacc_sched,
   .f = function(x){
@@ -211,81 +142,29 @@ import_new_reports <- map_df(
       mutate(Filename = x,
              ReportDate = as.Date(str_extract(x, "[0-9]{8}"),
                                   "%Y%m%d"),
-             Date = as.Date(Date, "%m/%d/%Y"))})
+             DOB = as.Date(DOB, format = "%m/%d/%Y"),
+             `Made Date` = as.Date(`Made Date`, format = "%m/%d/%y"),
+             Date = as.Date(Date, "%m/%d/%Y"),
+             `Appt Time` = as.POSIXct(paste("1899-12-31 ", `Appt Time`),
+                                      tz = "", format = "%Y-%m-%d %H:%M %p"),
+             `ZIP Code` = substr(`ZIP Code`, 2, nchar(`ZIP Code`)))})
 
-test_sy <- import_new_reports %>%
+# Filter schedule data from new reports to only keep appointments in latest reports
+sched_data_new_reports <- import_new_reports %>%
   group_by(Date) %>%
-  slice_max(ReportDate)
-
-appt_and_report_dates <- unique(import_new_reports[, c("Date", "ReportDate")])
-
-last_report_date <- appt_and_report_dates %>%
-  group_by(Date) %>%
-  summarize(UseReportFrom = max(ReportDate)) %>%
+  slice_max(ReportDate) %>%
+  mutate(Filename = NULL,
+         ReportDate = NULL) %>%
   ungroup()
 
-import_new_reports <- import_new_reports %>%
-  mutate(UseReportFrom = last_report_date$UseReportFrom[
-    match(Date,last_report_date$Date)],
-    CompareReportDates = UseReportFrom == ReportDate)
+new_reports_dates <- sort(unique(sched_data_new_reports$Date))
 
-test_kn <- import_new_reports %>%
-  filter(CompareReportDates) %>%
-  mutate(UseReportFrom = NULL,
-         CompareReportDates = NULL) %>%
-  arrange(`Date`,                                 
-          `Appt Time`,                             
-          `Entry Person`,                         
-          `Appt Notes`,                            
-          `Lead Days`,                           
-          `Canc Date`,                             
-          `Same Day?`,                            
-          `Appt Status`,                           
-          `CSN`,                                  
-          `MyChart Status`,                        
-          `Type`,                                 
-          `Race`,                                  
-          `Age`,                                  
-          `Age >= 65 Check`,
-          `Immunizations`,
-          `MOUNT SINAI HEALTH SYSTEM`,
-          `PATIENTS LIFE NUMBER OR ORACLE NUMBER`,
-          `Dept`,
-          `Department`,
-          `Level Of Service`,
-          `ZIP Code`,
-          `Filename`,
-          `ReportDate`)
+# Remove vaccine appoints from any overlapping dates in repository and new reports
+sched_repo <- sched_repo %>%
+  filter(!(Date >= new_reports_dates[1]))
 
-test_sy <- test_sy %>%
-  arrange(`Date`,                                 
-          `Appt Time`,                             
-          `Entry Person`,                         
-          `Appt Notes`,                            
-          `Lead Days`,                           
-          `Canc Date`,                             
-          `Same Day?`,                            
-          `Appt Status`,                           
-          `CSN`,                                  
-          `MyChart Status`,                        
-          `Type`,                                 
-          `Race`,                                  
-          `Age`,                                  
-          `Age >= 65 Check`,
-          `Immunizations`,
-          `MOUNT SINAI HEALTH SYSTEM`,
-          `PATIENTS LIFE NUMBER OR ORACLE NUMBER`,
-          `Dept`,
-          `Department`,
-          `Level Of Service`,
-          `ZIP Code`,
-          `Filename`,
-          `ReportDate`) %>%
-  ungroup()
-
-test_sy <- data.frame(test_sy)
-colnames(test_sy) <- colnames(test_kn)
-
+# Bind schedule repository and schedule from new reports
+sched_repo <- rbind(sched_repo, sched_data_new_reports)
 
 # Format and analyze schedule to date for dashboards ---------------------------
 sched_to_date <- sched_repo
