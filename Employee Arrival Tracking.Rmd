@@ -1,0 +1,442 @@
+---
+title: "MSHS COVID-19 Vaccinations"
+output: html_document
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = FALSE,
+                      warning = FALSE,
+                      message = FALSE)
+```
+
+```{r Install and load packages}
+# Code for summarizing employee vaccinations -----------------
+
+# Install and load necessary packages --------------------
+# install.packages("readxl")
+# install.packages("writexl")
+# install.packages("ggplot2")
+# install.packages("lubridate")
+# install.packages("dplyr")
+# install.packages("reshape2")
+# install.packages("svDialogs")
+# install.packages("stringr")
+# install.packages("formattable")
+# install.packages("kableExtra")
+# install.packages("ggpubr")
+# install.packages("zipcodeR")
+# install.packages("tidyr")
+
+# Analysis for weekend discharge tracking
+library(readxl)
+library(writexl)
+library(ggplot2)
+library(lubridate)
+library(dplyr)
+library(reshape2)
+library(svDialogs)
+library(stringr)
+library(formattable)
+library(scales)
+library(ggpubr)
+library(reshape2)
+library(knitr)
+library(kableExtra)
+library(rmarkdown)
+library(zipcodeR)
+library(tidyr)
+library(janitor)
+```
+
+```{r  Import reference data and repository, set fixed variables, include = FALSE}
+# Set working directory and select raw data ----------------------------
+rm(list = ls())
+
+# Determine path for working directory
+if ("Presidents" %in% list.files("J://")) {
+  user_directory <- paste0("J:/Presidents/HSPI-PM/",
+                           "Operations Analytics and Optimization/Projects/",
+                           "System Operations/COVID Vaccine")
+} else {
+  user_directory <- paste0("J:/deans/Presidents/HSPI-PM/",
+                           "Operations Analytics and Optimization/Projects/",
+                           "System Operations/COVID Vaccine")
+}
+
+# Set path for file selection
+user_path <- paste0(user_directory, "\\*.*")
+
+# Import reference data for site and pod mappings
+site_mappings <- read_excel(paste0(user_directory, "/ScheduleData/",
+                                   "Automation Ref 2021-07-08.xlsx"),
+                            sheet = "Site Mappings")
+pod_mappings <- read_excel(paste0(user_directory, "/ScheduleData/",
+                                  "Automation Ref 2021-07-08.xlsx"),
+                           sheet = "Pod Mappings Simple")
+
+# Store today's date
+today <- Sys.Date()
+
+this_week_start <- today - (wday(today) - 1)
+
+employee_summary_start <- this_week_start - 7 * 6
+
+# Create dataframe with dates and weeks
+all_dates <- data.frame("Date" = seq.Date(as.Date("1/1/20",
+                                                  format = "%m/%d/%y"),
+                                          as.Date("12/31/21",
+                                                  format = "%m/%d/%y"),
+                                          by = 1))
+all_dates <- all_dates %>%
+  mutate(Year = year(Date),
+         WeekNum = format(Date, "%U"))
+
+# Site order
+all_sites <- c("MSB",
+               "MSBI",
+               "MSH",
+               "MSM",
+               "MSQ",
+               "MSW",
+               "MSVD",
+               "Network LI")
+
+# Site order
+city_sites <- c("MSB",
+                "MSBI",
+                "MSH",
+                "MSM",
+                "MSQ",
+                "MSW",
+                "MSVD")
+
+# Employee home sites
+employee_sites <- c("MSH",
+                    "MSQ",
+                    "MSBI",
+                    "MSB",
+                    "MSW",
+                    "MSM",
+                    "MSSN",
+                    "NYEE",
+                    "ISMMS",
+                    "Corporate")
+
+# Pod type order
+pod_type <- c("Employee", "Patient", "All")
+
+# Vaccine manufacturers
+mfg <- c("Pfizer", "Moderna", "J&J")
+
+# NY zip codes
+ny_zips <- search_state("NY")
+
+# Mappings for dose names for tables
+dose_name_mappings = data.frame("Dose" = c("Dose1", "Dose2", "AllDoses"),
+                                "Name" = c("Dose 1", "Dose 2", "All Doses"))
+
+# Specify Sinai colors for table
+sinai_colors <- c("#221f72", "#C4C3EF",
+                  "#00AEEF", "#B3EBFF",
+                  "#D80B8C", "#FBB6E2")
+
+# Import schedule repository
+sched_repo <- readRDS(choose.files(default = paste0(user_directory,
+                                                    "/R_Sched_AM_Repo/*.*"),
+                                   caption = "Select schedule repository"))
+```
+
+```{r Format and process schedule repository, include = FALSE}
+
+# Format and analyze schedule to date for dashboards ---------------------------
+sched_to_date <- sched_repo
+
+sched_to_date <- sched_to_date %>%
+  mutate(
+    # Update timezones to EST if imported as UTC
+    `Appt Time` = with_tz(`Appt Time`, tzone = "EST"),
+    # Determine whether appointment is for dose 1 or dose 2
+    Dose = ifelse(str_detect(Type, "DOSE 1"), 1,
+                  ifelse(str_detect(Type, "DOSE 2"), 2, NA)),
+    # Determine appointment date, year, month, etc.
+    ApptDate = date(Date),
+    ApptYear = year(Date),
+    ApptMonth = month(Date),
+    ApptDay = day(Date),
+    ApptWeek = week(Date),
+    # Clean up department if it is duplicated in that column
+    Department = ifelse(str_detect(Department, ","),
+                        substr(Department, 1,
+                               str_locate(Department, ",") - 1),
+                        Department),
+    # Group arrived, completed, and checked out appts as arrived
+    Status = ifelse(`Appt Status` %in% c("Arrived", "Comp", "Checked Out"),
+                    "Arr", `Appt Status`),
+    # (Only needed when manually pulling data in the morning)
+    # Classify any arrivals from today as scheduled for morning export and
+    # classify any appts from prior days that are still in scheduled status as
+    # no shows
+    # Status2 = ifelse(ApptDate == today & Status == "Arr", "Sch",
+    #                  ifelse(ApptDate < today & Status == "Sch", "No Show",
+    # Status)),
+    # Update appointment status: classify any appts from prior days that are
+    # still in scheduled as No Shows
+    Status2 = ifelse(ApptDate < (today) & Status == "Sch", "No Show", 
+                     # Correct any appts erroneously marked as arrived early
+                     ifelse(ApptDate >= today & Status == "Arr", "Sch",
+                            Status)),
+    # Determine manufacturer based on immunization field
+    Mfg = #Keep manufacturer as NA if the appointment hasn't been arrived
+      ifelse(Status2 != "Arr", NA,
+             # Any blank immunizations assumed to be Pfizer
+             ifelse(is.na(Immunizations), "Pfizer",
+                    # Any immunizations with Moderna in text classified as Moderna
+                    ifelse(str_detect(Immunizations, "Moderna"), "Moderna",
+                           # Any visiting docs or Johnson and Johnson
+                           # immunizations classified as J&J
+                           ifelse(str_detect(Department, "VISITING DOCS") |
+                                    str_detect(Immunizations,
+                                               "Johnson and Johnson"),
+                                  "J&J", "Pfizer")))),
+    # Determine week number of year
+    WeekNum = format(ApptDate, "%U"),
+    # Determine appointment day of week
+    DOW = weekdays(ApptDate),
+    # Determine if patient's zip code is in NYS
+    NYZip = substr(`ZIP Code`, 1, 5) %in% ny_zips$zipcode)
+
+# Crosswalk sites
+sched_to_date <- left_join(sched_to_date, site_mappings,
+                           by = c("Department" = "Department"))
+
+# Roll up any Moderna administered at MSB for YWCA to MSH
+sched_to_date <- sched_to_date %>%
+  mutate(Site = ifelse(Site %in% c("MSB") & Mfg %in% c("Moderna"), "MSH", Site))
+
+# Crosswalk pod type (employee vs patient)
+sched_to_date <- left_join(sched_to_date,
+                           unique(pod_mappings[, c("Provider", "Pod Type")]),
+                           by = c("Provider/Resource" = "Provider"))
+
+# Assume any pods without a mapping are patient pods
+sched_to_date[is.na(sched_to_date$`Pod Type`), "Pod Type"] <- "Patient"
+
+sched_to_date <- sched_to_date %>%
+  mutate(MSHS_Employee = str_detect(
+    replace_na(`MOUNT SINAI HEALTH SYSTEM`, "No Site Provided"),
+    pattern = paste(employee_sites, collapse = "|")),
+         Employee_Site = ifelse(MSHS_Employee,
+                            str_extract(`MOUNT SINAI HEALTH SYSTEM`,
+                                        pattern = paste(employee_sites,
+                                                        collapse = "|")),
+                            NA))
+```
+
+```{r Analysis of arrived employee visits, include = FALSE}
+arr_empl_visits <- sched_to_date %>%
+  filter(MSHS_Employee & Status2 == "Arr") %>%
+  mutate(WeekStart = ApptDate - (wday(ApptDate) - 1),
+         WeekEnd = ApptDate + (7 - wday(ApptDate)),
+         WeekOf = paste0(format(WeekStart, "%m/%d/%y"),
+                         "-",
+                         format(WeekEnd, "%m/%d/%y")))
+
+all_doses <- arr_empl_visits %>%
+  group_by(Site, Dose) %>%
+  summarize(Count = n()) %>%
+  mutate(Dose = ifelse(Dose == 1, "Dose1", "Dose2")) %>%
+  pivot_wider(names_from = Dose,
+              values_from = Count) %>%
+  mutate(AllDoses = sum(Dose1, Dose2, na.rm = TRUE)) %>%
+  adorn_totals(name = "MSHS", na.rm = TRUE)
+  
+arr_empl_visits_summary <- arr_empl_visits %>%
+  group_by(Site,
+           WeekStart,
+           Dose) %>%
+  summarize(Count = n()) %>%
+  mutate(Dose = ifelse(Dose == 1, "Dose1", "Dose2")) %>%
+  pivot_wider(names_from = Dose,
+              values_from = Count) %>%
+  mutate(AllDoses = sum(Dose1, Dose2, na.rm = TRUE)) %>%
+  pivot_longer(cols = c("Dose1", "Dose2", "AllDoses"),
+               names_to = "Dose",
+               values_to = "Count") %>%
+  mutate(Site = factor(Site,
+                       levels = all_sites,
+                       ordered = TRUE)) %>%
+  arrange(Site,
+          WeekStart) %>%
+  filter(WeekStart > employee_summary_start) %>%
+  mutate(WeekStart = format(WeekStart, "%m/%d/%y")) %>%
+  pivot_wider(names_from = WeekStart,
+              values_from = Count)
+```
+
+```{r Analysis for scheduled appointments over the next week, include = FALSE}
+sched_outlook <- 7
+sched_dates <- seq.Date(today, today + sched_outlook - 1, by = 1)
+
+vacc_sites <- all_sites[!(all_sites == "MSVD")]
+
+doses <- c(1, 2)
+
+dates_rep <- data.frame(ApptDate = rep(sched_dates, length(vacc_sites)))
+site_dates_rep <- data.frame(Site = sort(rep(vacc_sites, length(sched_dates))))
+
+site_dates_templ <- cbind(site_dates_rep, dates_rep)
+
+doses_rep <- data.frame(Dose = rep(doses, length(vacc_sites)))
+site_doses_rep <- data.frame(Site = sort(rep(vacc_sites, length(doses))))
+
+site_dose_templ <- cbind(site_doses_rep, doses_rep)
+
+site_date_dose_templ <- left_join(site_dates_templ, site_dose_templ,
+                                  by = c("Site" = "Site"))
+
+sched_appts <- sched_to_date %>%
+  filter(ApptDate >= today &
+           ApptDate < today + 7 &
+           Status2 == "Sch") %>%
+  group_by(Site,
+           ApptDate,
+           Dose) %>%
+  summarize(Count = n())
+
+sched_appts <- left_join(site_date_dose_templ, sched_appts,
+                         by = c("Site" = "Site",
+                                "ApptDate" = "ApptDate",
+                                "Dose" = "Dose"))
+
+sched_appts_summary <- sched_appts %>%
+  group_by(Site, ApptDate) %>%
+  mutate(Dose = ifelse(Dose == 1, "Dose1", "Dose2")) %>%
+  pivot_wider(names_from = Dose,
+              values_from = Count) %>%
+  mutate(AllDoses = sum(Dose1, Dose2, na.rm = TRUE)) %>%
+  pivot_longer(cols = c("Dose1", "Dose2", "AllDoses"),
+               names_to = "Dose",
+               values_to = "Count") %>%
+  mutate(Site = factor(Site,
+                       levels = vacc_sites,
+                       ordered = TRUE)) %>%
+  arrange(Site,
+          ApptDate) %>%
+  mutate(ApptDate = format(ApptDate, "%m/%d/%y")) %>%
+  pivot_wider(names_from = ApptDate,
+              values_from = Count)
+
+```
+
+```{r Custom functions for creating tables of arrived and scheduled visits, include = FALSE}
+arr_empl_kable <- function(dose) {
+  arr_df <- arr_empl_visits_summary %>%
+    filter(Dose == dose) %>%
+    mutate(Dose = NULL) %>%
+    adorn_totals(name = "Total",
+                 na.rm = TRUE) %>%
+    rename(`Vaccination Site` = Site)
+  
+  kable(arr_df,
+        format = "html",
+        escape = FALSE,
+        align = "c",
+        digits = 0,
+        caption = paste0(
+          dose_name_mappings$Name[dose_name_mappings$Dose == dose],
+          ": Employee Vaccinations Over the Last 6 Weeks")) %>%
+    kable_styling(bootstrap_options = "hover",
+                  position = "center",
+                  font_size = 11,
+                  full_width = FALSE) %>%
+    column_spec(column = c(1, ncol(arr_df)),
+                border_right = "thin solid lightgray") %>%
+    row_spec(row = nrow(arr_df),
+             background = "lightgrey",
+             bold = T,
+             color = "black") %>%
+    add_header_above(c(" " = 1,
+                       "Week Of" = ncol(arr_df) - 1),
+                     background = c("", sinai_colors[1]),
+                     line = FALSE,
+                     color = "white")
+}
+
+sched_appts_kable <- function(dose) {
+  sch_df <- sched_appts_summary %>%
+    filter(Dose == dose) %>%
+    mutate(Dose = NULL) %>%
+    adorn_totals(name = "Total",
+                 na.rm = TRUE) %>%
+    rename(`Vaccination Site` = Site)
+  
+  kable(sch_df,
+        format = "html",
+        escape = FALSE,
+        align = "c",
+        digits = 0,
+        caption = paste0(
+          dose_name_mappings$Name[dose_name_mappings$Dose == dose],
+          ": Scheduled Appointments Over Next 7 Days")) %>%
+    kable_styling(bootstrap_options = "hover",
+                  position = "center",
+                  font_size = 11,
+                  full_width = FALSE) %>%
+    column_spec(column = c(1, ncol(sch_df)),
+                border_right = "thin solid lightgray") %>%
+    row_spec(row = nrow(sch_df),
+             background = "lightgrey",
+             bold = T,
+             color = "black") %>%
+    add_header_above(c(" " = 1,
+                       "Appointment Date" = ncol(sch_df) - 1),
+                     background = c("", sinai_colors[1]),
+                     line = FALSE,
+                     color = "white")
+}
+
+```
+
+### Administered Employee Vaccinations
+#### Arrived Visits Through `r format(max(arr_empl_visits$ApptDate), "%m/%d/%y")` 10:40PM {.tabset}
+
+##### All Doses
+```{r Call custom function for all doses administered to employees over last 6 weeks}
+arr_empl_kable(dose = "AllDoses")
+```
+
+##### Dose 1
+```{r Call custom function for dose 1 administered to employees over last 6 weeks}
+arr_empl_kable(dose = "Dose1")
+```
+
+##### Dose 2
+```{r Call custom function for dose 2 administered to employees over last 6 weeks}
+arr_empl_kable(dose = "Dose2")
+```
+
+#### {-}
+
+<h6><i>Analysis based on repository of Epic schedule data. Employees identified as those patients who identify themselves as employees during visit, resulting in presence of MSHS site and life number in Epic.</i></h6>
+
+### Scheduled Vaccinations
+#### Employee & Patient Appointments Through `r format(max(sched_dates), "%m/%d/%y")` {.tabset}
+
+##### All Doses
+```{r Call custom function for all doses scheduled over next 7 days}
+sched_appts_kable(dose = "AllDoses")
+```
+
+##### Dose 1
+```{r Call custom function for dose 1 scheduled over next 7 days}
+sched_appts_kable(dose = "Dose1")
+```
+
+##### Dose 2
+```{r Call custom function for dose 2 scheduled over next 7 days}
+sched_appts_kable(dose = "Dose2")
+```
+
+#### {-}
+
+<h6><i>End of report.</i></h6>
