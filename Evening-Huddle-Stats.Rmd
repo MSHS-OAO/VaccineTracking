@@ -84,10 +84,10 @@ update_repo <- TRUE
 
 # Import reference data for site and pod mappings
 site_mappings <- read_excel(paste0(user_directory, "/ScheduleData/",
-                                   "Automation Ref 2021-07-20.xlsx"),
+                                   "Automation Ref 2021-08-16.xlsx"),
                             sheet = "Site Mappings")
 pod_mappings <- read_excel(paste0(user_directory, "/ScheduleData/",
-                                  "Automation Ref 2021-07-20.xlsx"),
+                                  "Automation Ref 2021-08-16.xlsx"),
                            sheet = "Pod Mappings Simple")
 
 # Store today's date

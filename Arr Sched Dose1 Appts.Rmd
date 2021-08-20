@@ -1,0 +1,202 @@
+---
+title: "MSHS Dose 1 Vaccine Appointments"
+output: html_document
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = FALSE,
+                      warning = FALSE,
+                      message = FALSE)
+```
+
+```{r Reference data}
+dashboard_start_date <- as.Date("8/5/21", format = "%m/%d/%y")
+
+mandate_date <- as.Date("8/12/21", format = "%m/%d/%y")
+
+sinai_colors <- c("#221f72", "#C4C3EF",
+                  "#00AEEF", "#B3EBFF",
+                  "#D80B8C", "#FBB6E2",
+                  "#7F7F7F")
+```
+
+```{r Summarize and format first dose schedule data}
+
+# Summarize first dose arrived and scheduled visits
+first_dose_sch <- sched_to_date %>%
+  filter(ApptDate >= dashboard_start_date &
+           Dose == 1 &
+           Status2 %in% c("Arr", "Sch") &
+           !(Site %in% c("MSVD"))) %>%
+  mutate(Timeframe = ifelse(ApptDate < mandate_date, "Before Mandate",
+                            "After Mandate")) %>%
+  group_by(Site, ApptDate, Status2, Timeframe) %>%
+  summarize(Count = n()) %>%
+  ungroup() %>%
+  arrange(ApptDate, Site) %>%
+  pivot_wider(names_from = c(ApptDate, Status2, Timeframe),
+              values_from = Count,
+              names_sep = ";") %>%
+  adorn_totals(where = "row",
+               name = "MSHS",
+               na.rm = TRUE) %>%
+  pivot_longer(cols = starts_with("2021-"),
+               names_to = c("ApptDate", "Status2", "Timeframe"),
+               names_sep = ";",
+               values_to = "Count") %>%
+  mutate(ApptDate = as.Date(ApptDate, "%Y-%m-%d"))
+  
+# Format schedule summary for use in kable
+sch_summary_table <- first_dose_sch %>%
+  mutate(ApptDate = format(ApptDate, "%m/%d/%y"),
+         Timeframe = NULL) %>%
+  pivot_wider(names_from = c(ApptDate, Status2),
+              values_from = Count,
+              names_sort = FALSE,
+              names_sep = ";")
+
+# Create a function for creating site level kables
+first_dose_kable <- function(site) {
+  site_sch_kable <- sch_summary_table %>%
+    filter(Site == site)
+  
+  arr_col_start <- min(
+    which(str_detect(colnames(site_sch_kable), ";Arr")))
+  arr_col_end <- max(
+    which(str_detect(colnames(site_sch_kable), ";Arr")))
+  sch_col_start <- min(
+    which(str_detect(colnames(site_sch_kable), ";Sch")))
+  sch_col_end <- max(
+    which(str_detect(colnames(site_sch_kable), ";Sch")))
+  
+  kable_col_names <- gsub(";.*", "", colnames(site_sch_kable))
+  
+  kable_headers <- c(" " = 1,
+                   "Arrived Visits" = (arr_col_end - arr_col_start + 1),
+                   "Scheduled Visits" = (sch_col_end - sch_col_start + 1))
+  
+  kable(site_sch_kable, format = "html", escape = FALSE,
+        align = "c", digits = 0,
+        col.names = kable_col_names,
+        caption = paste0(site, " Dose 1 Summary")) %>%
+    kable_styling(bootstrap_options = "hover", position = "center",
+                  font_size = 11, full_width = FALSE) %>%
+    column_spec(column = c(1,
+                           arr_col_end,
+                           sch_col_end),
+                border_right = "thin solid lightgray") %>%
+    column_spec(column = c(arr_col_start:arr_col_end),
+                background = sinai_colors[2]) %>%
+    column_spec(column = c(sch_col_start:sch_col_end),
+                background = sinai_colors[4]) %>%
+    add_header_above(kable_headers,
+                     background = c("",
+                                    sinai_colors[1],
+                                    sinai_colors[3]),
+                     line = FALSE,
+                     color = "white") %>%
+    scroll_box(width = "800px")
+
+}
+
+first_dose_graph <- function(site) {
+  site_sch_graph <- first_dose_sch %>%
+    filter(Site == site)
+  
+  ggplot(site_sch_graph,
+         aes(fill = Status2,
+             y = Count,
+             x = ApptDate)) +
+    geom_col(position = "identity") +
+    labs(title = paste(site,
+                       " Arrived and Scheduled Dose 1 Visits"),
+         x = "Date",
+         y = "Volume") +
+    theme_bw() +
+    theme(plot.title = element_text(hjust = 0.5),
+          legend.position = "bottom",
+          axis.text.x = element_text(angle = 30, hjust = 1)) +
+    guides(fill = guide_legend(title = "Visit Status")) +
+    geom_text(aes(x = ApptDate, y = Count, label = Count),
+              # color = "white",
+              # position = "identity",
+              color = "black",
+              position = "identity",
+              vjust = -0.5, 
+              # position = position_nudge(y = 0.5),
+              size = 3) +
+    scale_fill_manual(values = c(sinai_colors[1], sinai_colors[3]),
+                      breaks = unique(site_sch_graph$Status2),
+                      labels = c("Arrived", "Scheduled")) +
+    scale_y_continuous(expand = c(0, 0, 0.1, 0)) +
+    scale_x_date(date_labels = "%m/%d",
+                 breaks = seq.Date(from = min(site_sch_graph$ApptDate),
+                                   to = max(site_sch_graph$ApptDate),
+                                   by = 2),
+                 expand = c(0, 1)) +
+  geom_vline(xintercept = mandate_date,
+             color = "#7F7F7F",
+             linetype ="dashed",
+             size = .75) +
+  geom_text(aes(x = mandate_date, y = max(site_sch_graph$Count, na.rm = TRUE)*1.15),
+            label = "Vaccine Mandate Date",
+            color = "#7F7F7F",
+            size = 4,
+            hjust = 0)
+}
+
+```
+
+## {.tabset}
+
+### MSHS
+```{r Create table and graph for MSHS}
+first_dose_kable(site = "MSHS")
+asis_output("<h4>")
+first_dose_graph(site = "MSHS")
+```
+
+### MSBI
+```{r Create table and graph for MSBI}
+first_dose_kable(site = "MSBI")
+asis_output("<h4>")
+first_dose_graph(site = "MSBI")
+```
+
+### MSB
+```{r Create table and graph for MSB}
+first_dose_kable(site = "MSB")
+asis_output("<h4>")
+first_dose_graph(site = "MSB")
+```
+
+### MSH
+```{r Create table and graph for MSH}
+first_dose_kable(site = "MSH")
+asis_output("<h4>")
+first_dose_graph(site = "MSH")
+```
+
+### MSM
+```{r Create table and graph for MSM}
+first_dose_kable(site = "MSM")
+asis_output("<h4>")
+first_dose_graph(site = "MSM")
+```
+
+### MSQ
+```{r Create table and graph for MSQ}
+first_dose_kable(site = "MSQ")
+asis_output("<h4>")
+first_dose_graph(site = "MSQ")
+```
+
+### MSW
+```{r Create table and graph for MSW}
+first_dose_kable(site = "MSW")
+asis_output("<h4>")
+first_dose_graph(site = "MSW")
+```
+
+## {-}
+

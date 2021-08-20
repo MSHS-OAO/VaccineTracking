@@ -33,6 +33,7 @@ library(kableExtra)
 library(rmarkdown)
 library(zipcodeR)
 library(tidyr)
+library(janitor)
 
 # Set working directory and select raw data ----------------------------
 rm(list = ls())
@@ -60,10 +61,10 @@ update_walkins <- FALSE
 
 # Import reference data for site and pod mappings
 site_mappings <- read_excel(paste0(user_directory, "/ScheduleData/",
-                                   "Automation Ref 2021-07-20.xlsx"),
+                                   "Automation Ref 2021-08-16.xlsx"),
                             sheet = "Site Mappings")
 pod_mappings <- read_excel(paste0(user_directory, "/ScheduleData/",
-                                  "Automation Ref 2021-07-20.xlsx"),
+                                  "Automation Ref 2021-08-16.xlsx"),
                            sheet = "Pod Mappings Simple")
 
 # Store today's da
@@ -908,3 +909,11 @@ write_xlsx(export_list, path = paste0(user_directory,
                                       "Auto Epic Report Sched Data Export ",
                                       format(Sys.time(), "%m%d%y %H%M"),
                                       ".xlsx"))
+
+rmarkdown::render(input = "Arr Sched Dose1 Appts.Rmd",
+                  output_file = paste0(
+                    user_directory,
+                    "/Vaccine Mandate Dashboard Output",
+                    "/MSHS Dose 1 Sched ",
+                    format(Sys.Date(), "%m-%d-%y")))
+
