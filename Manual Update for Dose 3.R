@@ -883,3 +883,8 @@ write_xlsx(export_list, path = paste0(user_directory,
                                       format(Sys.time(), "%m%d%y %H%M"),
                                       ".xlsx"))
 
+rmarkdown::render(input = "Vax_Arr_Sch_Tracking_Tool.Rmd",
+                  output_file = paste0(user_directory,
+                                       "/Daily Dashboard Drafts",
+                                       "/Vaccine Arr & Sch Tracking Tool ",
+                                       format(Sys.Date(), "%Y-%m-%d")))

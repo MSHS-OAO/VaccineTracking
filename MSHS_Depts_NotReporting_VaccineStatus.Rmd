@@ -1,0 +1,141 @@
+---
+title: "MSHS Vaccination Status"
+output: html_document
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = FALSE,
+                      warning = FALSE,
+                      message = FALSE)
+
+#Analysis for weekend discharge tracking
+library(readxl)
+library(writexl)
+library(ggplot2)
+library(lubridate)
+library(dplyr)
+library(reshape2)
+library(svDialogs)
+library(stringr)
+library(formattable)
+library(scales)
+library(ggpubr)
+library(reshape2)
+library(knitr)
+library(kableExtra)
+library(rmarkdown)
+library(zipcodeR)
+library(tidyr)
+library(janitor)
+
+# Set working directory and select raw data ----------------------------
+rm(list = ls())
+
+# Determine path for working directory
+if ("Presidents" %in% list.files("J://")) {
+  user_directory <- paste0("J:/Presidents/HSPI-PM/",
+                           "Operations Analytics and Optimization/Projects/",
+                           "System Operations/COVID Vaccine")
+} else {
+  user_directory <- paste0("J:/deans/Presidents/HSPI-PM/",
+                           "Operations Analytics and Optimization/Projects/",
+                           "System Operations/COVID Vaccine")
+}
+
+# Set path for file selection
+user_path <- paste0(user_directory, "\\*.*")
+
+raw_df <- read_excel(path = 
+                             paste0(user_directory,
+                                    "/AdHoc",
+                                    "/Vaccine Status Non Reporting Depts",
+                                    "/MSHS Summary NonReporting Depts 2021-08-24.xlsx"),
+                           col_types = c("text", "text", "text", "text",
+                                   "numeric", "numeric", "numeric", "numeric",
+                                   "numeric", "numeric", "numeric", "numeric",
+                                   "numeric", "numeric", "numeric", "numeric"),
+                     sheet = "CombinedData_R")
+
+reporting_df <- raw_df %>%
+  select(`Testing Site Level 1`,
+         `Dept Cd`,
+         `Dept Desc`,
+         `NOT REPORTED - TOTAL COUNT`) %>%
+  rename(Site = `Testing Site Level 1`,
+         DeptCode = `Dept Cd`,
+         DeptDescr = `Dept Desc`,
+         Vol_NotReporting = `NOT REPORTED - TOTAL COUNT`) %>%
+  mutate(Site = ifelse(str_detect(Site, "150 E 42"), "150 E 42 St",
+                       ifelse(str_detect(Site, "Union Sq"), "Union Square/Chelsea",
+                              Site)))
+
+site_tables <- function(site) {
+  data <- reporting_df %>%
+    filter(Site == site) %>%
+    arrange(desc(Vol_NotReporting))
+  
+  data <- head(data, 5)
+  
+  kable(data, format = "html", escape = FALSE,
+      align = "c", digits = 0,
+      caption = paste0(site, " Depts With Highest Volume Not Reporting")) %>%
+  kable_styling(bootstrap_options = "hover", position = "center",
+                font_size = 11, full_width = FALSE) 
+}
+
+
+summary_by_count <- reporting_df %>%
+  filter(!is.na(Vol_NotReporting)) %>%
+  group_by(Vol_NotReporting) %>%
+  summarize(NoDepts = n()) %>%
+  arrange(desc(NoDepts)) %>%
+  mutate(Product = NoDepts * Vol_NotReporting)
+
+
+```
+
+# Depts by Site {.tabset}
+## MSH
+```{r Create tables for MSH}
+site_tables(site = "MSH")
+```
+
+## MSQ
+```{r Create tables for MSQ}
+site_tables(site = "MSQ")
+```
+
+## MSBI
+```{r Create tables for MSBI}
+site_tables(site = "MSBI")
+```
+
+## MSB
+```{r Create tables for MSB}
+site_tables(site = "MSB")
+```
+
+## MSM
+```{r Create tables for MSM}
+site_tables(site = "MSM")
+```
+
+## MSW
+```{r Create tables for MSW}
+site_tables(site = "MSW")
+```
+
+## NYEE
+```{r Create tables for NYEE}
+site_tables(site = "NYEE")
+```
+
+## 150 E 42 St
+```{r Create tables for 150 E 42}
+site_tables(site = "150 E 42 St")
+```
+
+## Union Sq & Chelsea
+```{r Create tables for Union Sq}
+site_tables(site = "Union Square/Chelsea")
+```
