@@ -125,6 +125,10 @@ if (update_repo) {
                                                         "/R_Sched_AM_Repo/*.*"),
                                        caption = "Select schedule repository"))
     
+    # # Manually add a column for MSHS employee to historical repo one time
+    # sched_repo <- sched_repo %>%
+    #   mutate(`Is the patient a Mount Sinai employee` = NA)
+    
     # # Convert appointment date in schedule repository from posixct to date
     # sched_repo <- sched_repo %>%
     #   mutate(ApptDate = date(ApptDate))
@@ -189,6 +193,7 @@ if (update_repo) {
 sched_to_date <- sched_repo
 
 sched_to_date <- sched_to_date %>%
+  rename(IsPtEmployee = `Is the patient a Mount Sinai employee`) %>%
   mutate(
     # Update timezones to EST if imported as UTC
     `Appt Time` = with_tz(`Appt Time`, tzone = "EST"),
@@ -241,7 +246,18 @@ sched_to_date <- sched_to_date %>%
     # Determine appointment day of week
     DOW = weekdays(ApptDate),
     # Determine if patient's zip code is in NYS
-    NYZip = substr(`ZIP Code`, 1, 5) %in% ny_zips$zipcode)
+    NYZip = substr(`ZIP Code`, 1, 5) %in% ny_zips$zipcode,
+    # Determine if patient is a MSHS employee based on response to question
+    MSHSEmployee =
+      # First see if patient responded "YES" to question about MSHS employee
+      str_detect(
+        str_replace_na(IsPtEmployee, ""),
+        regex("yes", ignore_case = TRUE)) |
+      # Next, see if there is a MSHS site listed for patients who were vaccinated
+      # prior to the addition of the MSHS employee field
+      str_detect(
+        str_replace_na(`MOUNT SINAI HEALTH SYSTEM`, " "),
+        regex("[a-z]", ignore_case = TRUE)))
 
 # Crosswalk sites
 sched_to_date <- left_join(sched_to_date, site_mappings,
@@ -266,6 +282,14 @@ sched_to_date[is.na(sched_to_date$`Pod Type`), "Pod Type"] <- "Patient"
 sched_summary <- sched_to_date %>%
   group_by(Site, `Pod Type`, Dose, ApptDate, NYZip, Status2) %>%
   summarize(Count = n())
+
+# Summarize arrivals by patient type (employees vs. non-employees)
+employee_arr <- sched_to_date %>%
+  filter(Status2 %in% c("Arr")) %>%
+  mutate(PatientType = ifelse(MSHSEmployee, "Employee", "Non-Employee")) %>%
+  group_by(Site, ApptDate, Dose, PatientType) %>%
+  summarize(Count = n()) %>%
+  ungroup
 
 # Summarize schedule breakdown for next 2 weeks and export --------------------
 # Format data
@@ -839,11 +863,11 @@ admin_to_date_mfg_export <- left_join(city_sites_doses_mfg, admin_to_date_mfg_ca
                                              "Mfg" = "Mfg",
                                              "Site" = "Site"))
 
-
 # Export key data tables to Excel for reporting -------------------------------
 # Export schedule summary, schedule breakdown, and cumulative administered
 # doses to excel file
 export_list <- list("SchedSummary" = sched_summary,
+                    "Arrivals_PatientType" = employee_arr,
                     "SchedBreakdown" = sched_breakdown_cast,
                     "Mfg_SchedBreakdown" = mfg_sched_breakdown_cast,
                     "Pfizer_SchedBreakdown" = pfizer_sched_breakdown_cast,
