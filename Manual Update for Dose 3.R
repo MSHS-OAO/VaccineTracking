@@ -888,3 +888,10 @@ rmarkdown::render(input = "Vax_Arr_Sch_Tracking_Tool.Rmd",
                                        "/Daily Dashboard Drafts",
                                        "/Vaccine Arr & Sch Tracking Tool ",
                                        format(Sys.Date(), "%Y-%m-%d")))
+
+
+rmarkdown::render(input = "Empl_Arrival_Tracking.Rmd",
+                  output_file = paste0(user_directory,
+                                       "/Daily Dashboard Drafts",
+                                       "/Employee Arrival Tracking Tool ",
+                                       format(Sys.Date(), "%Y-%m-%d")))

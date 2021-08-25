@@ -1,0 +1,125 @@
+---
+output: html_document
+---
+  
+### MSHS COVID-19 Employee Vaccination Tracking
+#### As of `r format(Sys.Date(), "%m/%d/%y")`
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = FALSE,
+                      warning = FALSE,
+                      message = FALSE)
+```
+
+```{r Create table to track employee arrivals}
+empl_arr_start_date <- as.Date("8/20/21", format = "%m/%d/%y")
+
+empl_arr_date_range <- seq.Date(from = empl_arr_start_date,
+                                to = today - 1,
+                                by = 1)
+empl_vacc_sites <- c("MSH", "MSQ", "MSBI", "MSB", "MSM", "MSW")
+
+empl_vacc_doses <- 1:3
+
+empl_vacc_sites_dates <- data.frame(
+  "Site" = sort(rep(empl_vacc_sites, length(empl_arr_date_range))),
+  "ApptDate" = rep(empl_arr_date_range, length(empl_vacc_sites)))
+
+empl_vacc_sites_doses <- data.frame(
+  "Site" = sort(rep(empl_vacc_sites, length(empl_vacc_doses))),
+  "Dose" = rep(empl_vacc_doses, length(empl_vacc_sites)))
+
+empl_vacc_templ <- left_join(empl_vacc_sites_dates,
+                             empl_vacc_sites_doses,
+                             by = c("Site" = "Site"))
+
+empl_arr_df <- employee_arr %>%
+  filter(PatientType == "Employee" &
+           ApptDate >= employee_arr_start_date) %>%
+  mutate(PatientType = NULL)
+
+empl_arr_df <- left_join(empl_vacc_templ,
+                         empl_arr_df,
+                         by = c("Site" = "Site",
+                                "ApptDate" = "ApptDate",
+                                "Dose" = "Dose"))
+
+empl_arr_df_test <- empl_arr_df %>%
+  mutate(Count = replace_na(Count, 0))  %>%
+  pivot_wider(names_from = c(Dose, ApptDate),
+              names_sep = "_",
+              values_from = "Count",
+              names_sort = FALSE,
+              names_prefix = "Dose") %>%
+  adorn_totals(where = "row",
+               na.rm = TRUE,
+               name = "MSHS") %>%
+  pivot_longer(cols = contains("Dose"),
+               names_to = c("Dose", "ApptDate"),
+               names_sep = "_",
+               values_to = "Count") %>%
+  mutate(Dose = str_replace(Dose, "Dose", "Dose "),
+         Site = factor(Site, levels = c(empl_vacc_sites, "MSHS"), ordered = TRUE),
+         ApptDate = as.Date(ApptDate, format = "%Y-%m-%d")) %>%
+  arrange(Dose, ApptDate, Site) %>%
+  relocate(Site, .after = Dose) %>%
+  mutate(ApptDate = format(ApptDate, "%m/%d/%y")) %>%
+  pivot_wider(names_from = c(Dose, Site),
+              names_sep = "_",
+              values_from = Count) %>%
+  adorn_totals(where = "row",
+               na.rm = TRUE,
+               name = "Total") %>%
+  pivot_longer(cols = contains("Dose"),
+               names_to = c("Dose", "Site"),
+               names_sep = "_",
+               values_to = "Count") %>%
+  pivot_wider(names_from = ApptDate,
+              values_from = Count,
+              names_sort = FALSE)
+
+empl_vacc_tables <- function(dose) {
+  data <- empl_arr_df_test %>%
+    filter(Dose == paste("Dose", dose)) %>%
+    mutate(Dose = NULL)
+  
+  kable(data, format = "html", escape = FALSE,
+        align = "c", digits = 0,
+        caption = paste("Dose", dose, "Employee Vaccine Arrivals")) %>%
+    kable_styling(bootstrap_options = "hover", position = "center",
+                  font_size = 11, full_width = FALSE) %>%
+    column_spec(column = c(1,
+                           ncol(data) - 1,
+                           ncol(data)),
+                border_right = "thin solid lightgray") %>%
+    column_spec(column = ncol(data),
+                bold = TRUE,
+                italic = TRUE) %>%
+    add_header_above(c(" " = 1, "Date" = ncol(data) - 1),
+                     background = c("",
+                                    sinai_colors[1]),
+                     line = FALSE,
+                     color = "white") %>%
+    row_spec(row = nrow(data),
+             bold = TRUE,
+             italic = TRUE,
+             hline_after = TRUE)
+}
+```
+
+```{r Dose 1}
+empl_vacc_tables(dose = 1)
+
+```
+###  
+
+```{r Dose 2}
+empl_vacc_tables(dose = 2)
+```
+###  
+
+```{r Dose 3}
+empl_vacc_tables(dose = 3)
+```
+
+<h4><bold>Data Sources:</bold></h4>
+Analysis based on Epic schedule data for arrived appointments through prior day. Employees identified as those patients who answer "yes" when asked if s/he is a Mount Sinai employee.
