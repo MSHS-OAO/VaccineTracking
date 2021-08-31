@@ -124,15 +124,7 @@ if (update_repo) {
     sched_repo <- readRDS(choose.files(default = paste0(user_directory,
                                                         "/R_Sched_AM_Repo/*.*"),
                                        caption = "Select schedule repository"))
-    
-    # # Manually add a column for MSHS employee to historical repo one time
-    # sched_repo <- sched_repo %>%
-    #   mutate(`Is the patient a Mount Sinai employee` = NA)
-    
-    # # Convert appointment date in schedule repository from posixct to date
-    # sched_repo <- sched_repo %>%
-    #   mutate(ApptDate = date(ApptDate))
-    
+
     raw_df <- read.csv(choose.files(
       default =
         paste0(user_directory, "/Epic Auto Report Sched All Status/*.*"),
@@ -200,7 +192,7 @@ sched_to_date <- sched_to_date %>%
   mutate(
     # Update timezones to EST if imported as UTC
     `Appt Time` = with_tz(`Appt Time`, tzone = "EST"),
-    # Determine whether appointment is for dose 1 or dose 2
+    # Determine whether appointment is for dose 1, 2, or 3 based on scheduled visit type
     Dose = ifelse(str_detect(Type, "DOSE 1"), 1,
                   ifelse(str_detect(Type, "DOSE 2"), 2,
                          ifelse(str_detect(Type, "DOSE 3"), 3, NA))),
@@ -287,7 +279,7 @@ sched_summary <- sched_to_date %>%
   summarize(Count = n())
 
 # Summarize arrivals by patient type (employees vs. non-employees)
-employee_arr <- sched_to_date %>%
+arr_pt_type_summary <- sched_to_date %>%
   filter(Status2 %in% c("Arr")) %>%
   mutate(PatientType = ifelse(MSHSEmployee, "Employee", "Non-Employee")) %>%
   group_by(Site, ApptDate, Dose, PatientType) %>%
@@ -870,7 +862,7 @@ admin_to_date_mfg_export <- left_join(city_sites_doses_mfg, admin_to_date_mfg_ca
 # Export schedule summary, schedule breakdown, and cumulative administered
 # doses to excel file
 export_list <- list("SchedSummary" = sched_summary,
-                    "Arrivals_PatientType" = employee_arr,
+                    "Arrivals_PatientType" = arr_pt_type_summary,
                     "SchedBreakdown" = sched_breakdown_cast,
                     "Mfg_SchedBreakdown" = mfg_sched_breakdown_cast,
                     "Pfizer_SchedBreakdown" = pfizer_sched_breakdown_cast,

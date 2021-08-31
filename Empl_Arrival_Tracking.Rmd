@@ -38,7 +38,7 @@ empl_vacc_templ <- left_join(empl_vacc_sites_dates,
                              empl_vacc_sites_doses,
                              by = c("Site" = "Site"))
 
-empl_arr_df <- employee_arr %>%
+empl_arr_df <- arr_pt_type_summary %>%
   filter(PatientType == "Employee" &
            ApptDate >= empl_arr_start_date) %>%
   mutate(PatientType = NULL)
