@@ -135,13 +135,14 @@ if (update_repo) {
     
     raw_df <- read.csv(choose.files(
       default =
-        paste0(user_directory, "/Epic Manual Sched Pulls/*.*"),
+        paste0(user_directory, "/Epic Auto Report Sched All Status/*.*"),
       caption = "Select current Epic schedule"),
       stringsAsFactors = FALSE,
       check.names = FALSE)
   }
   
-  new_sched <- raw_df[, 1:ncol(raw_df) - 1]
+  new_sched <- raw_df
+  # new_sched <- raw_df[, 1:ncol(raw_df) - 1]
   
   # Remove test patient
   new_sched <- new_sched[new_sched$Patient != "Patient, Test", ]
@@ -151,12 +152,14 @@ if (update_repo) {
     mutate(DOB = as.Date(DOB, format = "%m/%d/%Y"),
            `Made Date` = as.Date(`Made Date`, format = "%m/%d/%y"),
            Date = as.Date(Date, format = "%m/%d/%Y"),
-           `Appt Time` = as.POSIXct(
-             ifelse(nchar(`Appt Time`) == 3,
-                    paste0("1899-12-31 0", `Appt Time`),
-                    paste0("1899-12-31 ", `Appt Time`)),
-             tz = "",
-             format = "%Y-%m-%d %H%M"),
+           `Appt Time` = as.POSIXct(paste("1899-12-31 ", `Appt Time`),
+                                    tz = "", format = "%Y-%m-%d %H:%M %p"),
+           # `Appt Time` = as.POSIXct(
+           #   ifelse(nchar(`Appt Time`) == 3,
+           #          paste0("1899-12-31 0", `Appt Time`),
+           #          paste0("1899-12-31 ", `Appt Time`)),
+           #   tz = "",
+           #   format = "%Y-%m-%d %H%M"),
            
            # `Appt Time` = as.POSIXct(paste0("1899-12-31 ", `Appt Time`),
            #                          tz = "", format = "%Y-%m-%d %H%M"),
@@ -883,11 +886,11 @@ write_xlsx(export_list, path = paste0(user_directory,
                                       format(Sys.time(), "%m%d%y %H%M"),
                                       ".xlsx"))
 
-rmarkdown::render(input = "Vax_Arr_Sch_Tracking_Tool.Rmd",
-                  output_file = paste0(user_directory,
-                                       "/Daily Dashboard Drafts",
-                                       "/Vaccine Arr & Sch Tracking Tool ",
-                                       format(Sys.Date(), "%Y-%m-%d")))
+# rmarkdown::render(input = "Vax_Arr_Sch_Tracking_Tool.Rmd",
+#                   output_file = paste0(user_directory,
+#                                        "/Daily Dashboard Drafts",
+#                                        "/Vaccine Arr & Sch Tracking Tool ",
+#                                        format(Sys.Date(), "%Y-%m-%d")))
 
 
 rmarkdown::render(input = "Empl_Arrival_Tracking.Rmd",
