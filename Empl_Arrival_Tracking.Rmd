@@ -108,7 +108,8 @@ empl_vacc_tables <- function(dose) {
     row_spec(row = nrow(data),
              bold = TRUE,
              italic = TRUE,
-             hline_after = TRUE)
+             hline_after = TRUE) %>%
+    scroll_box(width = "800px")
 }
 ```
 
