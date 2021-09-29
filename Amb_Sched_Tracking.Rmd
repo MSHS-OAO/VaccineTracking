@@ -1,0 +1,423 @@
+---
+output: html_document
+---
+  
+### MSHS COVID-19 Vaccine Dose 3 Schedule Tracking
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = FALSE,
+                      warning = FALSE,
+                      message = FALSE)
+```
+
+```{r Install and load packages}
+# Code for updating data analysis for afternoon huddle
+
+#Install and load necessary packages --------------------
+#install.packages("readraw_dfl")
+#install.packages("writeraw_dfl")
+#install.packages("ggplot2")
+#install.packages("lubridate")
+#install.packages("dplyr")
+#install.packages("reshape2")
+#install.packages("svDialogs")
+#install.packages("stringr")
+#install.packages("formattable")
+#install.packages("ggpubr")
+#install.packages("zipcodeR")
+#install.packages("tidyr")
+#install.packages("janitor")
+#install.packages("knitr")
+#install.packages("rmarkdown")
+#install.packages("kableExtra")
+
+#Analysis for weekend discharge tracking
+library(readxl)
+library(writexl)
+library(ggplot2)
+library(lubridate)
+library(dplyr)
+library(reshape2)
+library(svDialogs)
+library(stringr)
+library(formattable)
+library(scales)
+library(ggpubr)
+library(reshape2)
+library(knitr)
+library(kableExtra)
+library(rmarkdown)
+library(zipcodeR)
+library(tidyr)
+library(janitor)
+library(knitr)
+library(rmarkdown)
+library(kableExtra)
+```
+
+```{r Import schedule data and reference data}
+# Set path for file selection
+user_path <- paste0(user_directory, "\\*.*")
+
+# Determine whether or not to update an existing repo
+initial_run <- FALSE
+update_repo <- TRUE
+
+# Determine whether or not to update walk-in analysis
+update_walkins <- FALSE
+
+# Import reference data for site and pod mappings
+site_mappings <- read_excel(paste0(user_directory, "/ScheduleData/",
+                                   "Automation Ref 2021-09-29.xlsx"),
+                            sheet = "Site Mappings")
+pod_mappings <- read_excel(paste0(user_directory, "/ScheduleData/",
+                                  "Automation Ref 2021-09-29.xlsx"),
+                           sheet = "Pod Mappings Simple")
+
+# MSHS color scheme
+sinai_colors <- c("#221f72", "#C4C3EF",
+                  "#00AEEF", "#B3EBFF",
+                  "#D80B8C", "#FBB6E2",
+                  "#7F7F7F")
+
+# Store today's date
+today <- Sys.Date()
+
+# Create dataframe with dates and weeks
+all_dates <- data.frame("Date" = seq.Date(as.Date("1/1/20",
+                                                  format = "%m/%d/%y"),
+                                          as.Date("12/31/21",
+                                                  format = "%m/%d/%y"),
+                                          by = 1))
+all_dates <- all_dates %>%
+  mutate(Year = year(Date),
+         WeekNum = format(Date, "%U"))
+
+# Site order
+all_sites <- c("MSB",
+               "MSBI",
+               "MSH",
+               "MSM",
+               "MSQ",
+               "MSW",
+               "MSVD",
+               "Network LI")
+
+report_run_time <- ifelse(hour(Sys.time()) > 14, "PM", "AM")
+
+sched_data_file <- choose.files(
+  default =
+    paste0(user_directory,
+           ifelse(report_run_time == "AM",
+                  "/Epic Auto Report Sched All Status/*.*",
+                  "/Epic PM Huddle Sched All Status/*.*")),
+      caption = "Select current Epic schedule")
+
+report_date <- date(file.info(sched_data_file)$ctime)
+
+raw_data <- read.csv(sched_data_file,
+                     stringsAsFactors = FALSE,
+                     check.names = FALSE)
+
+```
+
+```{r Format and preprocess raw schedule data}
+sched_data <- raw_data %>%
+  filter(Patient != "Patient, Test") %>%
+  rename(MadeDate = `Made Date`,
+         IsPtEmployee = `Is the patient a Mount Sinai employee`) %>%
+  mutate(DOB = as.Date(DOB, format = "%m/%d/%Y"),
+         MadeDate = as.Date(MadeDate, format = "%m/%d/%y"),
+         ApptDate = as.Date(Date, format = "%m/%d/%Y"),
+         # Clean up department if it is duplicated in that column
+         Department = ifelse(str_detect(Department, ","),
+                        substr(Department, 1,
+                               str_locate(Department, ",") - 1),
+                        Department),
+         # Group arrived, completed, and checked out appointments as arrived
+         Status = ifelse(`Appt Status` %in% c("Arrived", "Comp", "Checked Out"),
+                         "Arr", `Appt Status`),
+         # Update appointment status: classify any appts from prior days that are
+         # still in scheduled as No Shows
+         Status2 = ifelse(ApptDate < (today) & Status == "Sch", "No Show", 
+                          # Correct any appts erroneously marked as arrived early
+                          ifelse(report_date < today &
+                                   ApptDate >= today &
+                                   Status == "Arr", "Sch",
+                                 Status)),
+         # Determine whether appointment is for dose 1, 2, or 3 based on
+         # scheduled visit type
+         Dose = ifelse(str_detect(Type, "DOSE 1"), 1,
+                       ifelse(str_detect(Type, "DOSE 2"), 2,
+                              ifelse(str_detect(Type, "DOSE 3"), 3, NA))))
+
+# Crosswalk sites
+sched_data <- left_join(sched_data, site_mappings,
+                        by = c("Department" = "Department"))
+
+
+```
+
+```{r Create template of sites and dates}
+dates_2wks <- seq.Date(from = today - 1,
+                       to = today + 14,
+                       by = 1)
+
+dates_templ <- data.frame(
+  "Date" = rep(dates_2wks,
+               length(all_sites)),
+   stringsAsFactors = FALSE)
+
+dates_templ <- dates_templ %>%
+  arrange(Date)
+
+# Combine site and dates
+site_dates_templ <- data.frame(
+  "Site" = rep(all_sites, length(dates_2wks)),
+  "Date" = dates_templ,
+  stringsAsFactors = FALSE)
+
+```
+
+```{r Subset dose 3 schedule data}
+# Create dose 3 schedule summary for ambulatory team
+dose3_sch_next_2wks <- sched_data %>%
+  filter(Status2 %in% c("Arr", "Sch") &
+           ApptDate %in% dates_2wks &
+           Dose == 3) %>%
+  group_by(ApptDate, Site, Status2) %>%
+  summarize(Count = n())
+
+dose3_sch_next_2wks <- left_join(
+  site_dates_templ,
+  dose3_sch_next_2wks, 
+  by = c("Site" = "Site",
+         "Date" = "ApptDate")
+)
+
+dose3_sch_next_2wks <- dose3_sch_next_2wks %>%
+  mutate(Count = replace_na(Count, 0),
+         Status2 = ifelse(is.na(Status2) & Date < today, "Arr",
+                          ifelse(is.na(Status2) & Date >= today, "Sch",
+                                 Status2)),
+         Date = format(Date, "%m/%d/%y"))
+
+dose3_sch_next_2wks_cast <- pivot_wider(dose3_sch_next_2wks,
+                                        names_from = c(Status2, Date),
+                                        names_sep = "_",
+                                        names_sort = FALSE,
+                                        values_from = Count)
+
+dose3_sch_next_2wks_cast <- dose3_sch_next_2wks_cast %>%
+  adorn_totals(where = "row",
+               na.rm = TRUE,
+               name = "MSHS")
+
+dose3_sch_next_2wks_cast <- dose3_sch_next_2wks_cast %>%
+  mutate_all(~replace_na(., 0))
+
+col_names_df <- colnames(dose3_sch_next_2wks_cast)
+col_names_table <- str_replace(col_names_df, regex("^[a-z]*_", ignore_case = TRUE), "")
+arr_cols <- max(which(str_detect(col_names_df, "Arr"))) - min(which(str_detect(col_names_df, "Arr"))) + 1
+sch_cols <- max(which(str_detect(col_names_df, "Sch"))) - min(which(str_detect(col_names_df, "Sch"))) + 1
+
+kable_dose3_sch <- kable(dose3_sch_next_2wks_cast, format = "html", escape = FALSE,
+        align = "c", digits = 0,
+        # caption = paste("Dose 3 Schedule"),
+      col.names = col_names_table) %>%
+    kable_styling(bootstrap_options = "hover", position = "center",
+                  font_size = 11, full_width = FALSE) %>%
+    column_spec(column = c(1,
+                           ncol(dose3_sch_next_2wks_cast)),
+                border_right = "thin solid lightgray") %>%
+    add_header_above(c(" " = 1,
+                       "Arrived Visits" = arr_cols,
+                       "Scheduled Visits" = sch_cols),
+                     background = c("",
+                                    sinai_colors[1],
+                                    sinai_colors[3]),
+                     line = FALSE,
+                     color = "white") %>%
+    row_spec(row = nrow(dose3_sch_next_2wks_cast),
+             bold = TRUE,
+             italic = TRUE,
+             hline_after = TRUE) %>%
+    scroll_box(width = "800px")
+
+
+```
+
+```{r Subset dose 3 appointments made yesterday and today for all appointment statuses}
+# Summarize all appointments made yesterday and today, regardless of appointment status
+dose3_sch_made_date <- sched_data %>%
+  filter(MadeDate %in% seq.Date(today - 1, today, by = 1) &
+           ApptDate %in% dates_2wks &
+           Dose == 3)
+
+made_dates <- sort(unique(dose3_sch_made_date$MadeDate))
+
+made_dates_str <- ifelse(length(made_dates) == 1,
+                         format(made_dates, "%m/%d/%y"),
+                         paste(format(min(made_dates), "%m/%d/%y"),
+                                "to",
+                               format(max(made_dates), "%m/%d/%y")))
+
+dose3_made_date_all_status <- dose3_sch_made_date %>%
+  group_by(Site, ApptDate) %>%
+  summarize(Count = n())
+
+dose3_made_date_all_status <- left_join(
+  site_dates_templ,
+  dose3_made_date_all_status,
+  by = c("Site" = "Site",
+         "Date" = "ApptDate")
+)
+
+dose3_made_date_all_status <- dose3_made_date_all_status %>%
+  mutate(Count = replace_na(Count, 0),
+         Date = format(Date, "%m/%d/%y"))
+
+dose3_made_date_all_status_cast <- pivot_wider(
+  dose3_made_date_all_status,
+  names_from = Date,
+  values_from = Count,
+  names_sort = FALSE
+)
+
+dose3_made_date_all_status_cast <- dose3_made_date_all_status_cast %>%
+  adorn_totals(where = "row",
+               na.rm = TRUE,
+               name = "MSHS") %>%
+  adorn_totals(where = "col",
+               na.rm = TRUE,
+               name = "Total")
+
+
+
+kable_dose3_made_date_all_status <- 
+  kable(dose3_made_date_all_status_cast,
+        format = "html",
+        escape = FALSE,
+        align = "c",
+        digits = 0,
+        caption = "All Appointment Statuses Including Cancellations & No Shows") %>%
+  kable_styling(bootstrap_options = "hover",
+                position = "center",
+                font_size = 11,
+                full_width = FALSE) %>%
+  column_spec(column = c(1,
+                         ncol(dose3_made_date_all_status_cast) -1,
+                         ncol(dose3_made_date_all_status_cast)),
+                border_right = "thin solid lightgray") %>%
+  add_header_above(c(" " = 1,
+                     "Appointment Date" =
+                       ncol(dose3_made_date_all_status_cast) - 1),
+                     background = c("",
+                                    sinai_colors[1]),
+                     line = FALSE,
+                     color = "white") %>%
+  row_spec(row = nrow(dose3_made_date_all_status_cast),
+           bold = TRUE,
+           italic = TRUE,
+           hline_after = TRUE) %>%
+  column_spec(column = ncol(dose3_made_date_all_status_cast),
+              bold = TRUE,
+              italic = TRUE) %>%
+  scroll_box(width = "800px")
+
+```
+
+```{r Further subset dose 3 appointment made yesterday and today to only include arrived and scheduled appointments}
+dose3_made_date_arr_sch <- dose3_sch_made_date %>%
+  filter(Status2 %in% c("Arr", "Sch")) %>%
+  group_by(Site, ApptDate) %>%
+  summarize(Count = n())
+
+dose3_made_date_arr_sch <- left_join(
+  site_dates_templ,
+  dose3_made_date_arr_sch,
+  by = c("Site" = "Site",
+         "Date" = "ApptDate")
+)
+
+dose3_made_date_arr_sch <- dose3_made_date_arr_sch %>%
+  mutate(Count = replace_na(Count, 0),
+         Date = format(Date, "%m/%d/%y"))
+
+dose3_made_date_arr_sch_cast <- pivot_wider(
+  dose3_made_date_arr_sch,
+  names_from = Date,
+  values_from = Count,
+  names_sort = FALSE
+)
+
+dose3_made_date_arr_sch_cast <- dose3_made_date_arr_sch_cast %>%
+  adorn_totals(where = "row",
+               na.rm = TRUE,
+               name = "MSHS") %>%
+  adorn_totals(where = "col",
+               na.rm = TRUE,
+               name = "Total")
+
+kable_dose3_made_date_arr_sch <-
+  kable(dose3_made_date_arr_sch_cast,
+        format = "html",
+        escape = FALSE,
+        align = "c",
+        digits = 0,
+        caption = "Arrived & Scheduled Appointments Only") %>%
+  kable_styling(bootstrap_options = "hover",
+                position = "center",
+                font_size = 11,
+                full_width = FALSE) %>%
+  column_spec(column = c(1,
+                         ncol(dose3_made_date_arr_sch_cast) -1,
+                         ncol(dose3_made_date_arr_sch_cast)),
+                border_right = "thin solid lightgray") %>%
+  add_header_above(c(" " = 1,
+                     "Appointment Date" =
+                       ncol(dose3_made_date_arr_sch_cast) - 1),
+                     background = c("",
+                                    sinai_colors[1]),
+                     line = FALSE,
+                     color = "white") %>%
+  row_spec(row = nrow(dose3_made_date_arr_sch_cast),
+           bold = TRUE,
+           italic = TRUE,
+           hline_after = TRUE) %>%
+  column_spec(column = ncol(dose3_made_date_arr_sch_cast),
+              bold = TRUE,
+              italic = TRUE) %>%
+  scroll_box(width = "800px")
+
+
+```
+
+
+```{r Create kable for scheduled appointments over next 14 days}
+
+asis_output(paste0("<h4>Based on Epic schedule data as of ",
+                   format(file.info(sched_data_file)$ctime,
+                          "%m/%d/%y %I:%M %p"),
+                   "</h4>"))
+
+asis_output("<br>")
+asis_output("<h4>Dose 3 Schedule for Next Two Weeks</h4>")
+kable_dose3_sch
+
+asis_output("<br>")
+asis_output("<br>")
+asis_output(paste0("<h4>Dose 3 Schedule for Appointments Made On ",
+                   made_dates_str,
+                   "</h4>"))
+
+kable_dose3_made_date_all_status
+
+asis_output("<br>")
+
+kable_dose3_made_date_arr_sch
+
+asis_output("<h6><i>End of report.</i></h6>")
+
+```
+
