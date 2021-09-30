@@ -211,7 +211,10 @@ dose3_sch_next_2wks_cast <- pivot_wider(dose3_sch_next_2wks,
 dose3_sch_next_2wks_cast <- dose3_sch_next_2wks_cast %>%
   adorn_totals(where = "row",
                na.rm = TRUE,
-               name = "MSHS")
+               name = "MSHS") %>%
+  adorn_totals(where = "col",
+               na.rm = TRUE,
+               name = "Total")
 
 dose3_sch_next_2wks_cast <- dose3_sch_next_2wks_cast %>%
   mutate_all(~replace_na(., 0))
@@ -225,24 +228,32 @@ kable_dose3_sch <- kable(dose3_sch_next_2wks_cast, format = "html", escape = FAL
         align = "c", digits = 0,
         # caption = paste("Dose 3 Schedule"),
       col.names = col_names_table) %>%
-    kable_styling(bootstrap_options = "hover", position = "center",
-                  font_size = 11, full_width = FALSE) %>%
-    column_spec(column = c(1,
-                           ncol(dose3_sch_next_2wks_cast)),
-                border_right = "thin solid lightgray") %>%
-    add_header_above(c(" " = 1,
-                       "Arrived Visits" = arr_cols,
-                       "Scheduled Visits" = sch_cols),
-                     background = c("",
-                                    sinai_colors[1],
-                                    sinai_colors[3]),
-                     line = FALSE,
-                     color = "white") %>%
-    row_spec(row = nrow(dose3_sch_next_2wks_cast),
-             bold = TRUE,
-             italic = TRUE,
-             hline_after = TRUE) %>%
-    scroll_box(width = "800px")
+  kable_styling(bootstrap_options = "hover",
+                position = "center",
+                font_size = 11,
+                full_width = FALSE) %>%
+  column_spec(column = c(1,
+                         ncol(dose3_sch_next_2wks_cast) - 1,
+                         ncol(dose3_sch_next_2wks_cast)),
+              border_right = "thin solid lightgray") %>%
+  add_header_above(c(" " = 1,
+                     "Arrived Visits" = arr_cols,
+                     "Scheduled Visits" = sch_cols,
+                     " " = 1),
+                   background = c("",
+                                  sinai_colors[1],
+                                  sinai_colors[3],
+                                  ""),
+                   line = FALSE,
+                   color = "white") %>%
+  row_spec(row = nrow(dose3_sch_next_2wks_cast),
+           bold = TRUE,
+           italic = TRUE,
+           hline_after = TRUE) %>%
+  column_spec(column = ncol(dose3_sch_next_2wks_cast),
+           bold = TRUE,
+           italic = TRUE) %>%
+  scroll_box(width = "800px")
 
 
 ```
