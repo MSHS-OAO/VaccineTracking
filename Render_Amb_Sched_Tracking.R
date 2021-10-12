@@ -14,6 +14,6 @@ if ("Presidents" %in% list.files("J://")) {
 
 rmarkdown::render(input = "Amb_Sched_Tracking.Rmd",
                   output_file = paste0(user_directory,
-                                       "/Dose3 Amb Sched Tracking",
-                                       "/Dose3 Schedule Tracking ",
+                                       "/Amb Sched Tracking",
+                                       "/Vaccine Schedule Tracking ",
                                        format(Sys.time(), "%Y-%m-%d %I%M%p")))
