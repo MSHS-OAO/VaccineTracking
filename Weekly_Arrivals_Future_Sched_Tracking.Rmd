@@ -79,10 +79,10 @@ update_repo <- TRUE
 
 # Import reference data for site and pod mappings
 site_mappings <- read_excel(paste0(user_directory, "/ScheduleData/",
-                                   "Automation Ref 2021-08-16.xlsx"),
+                                   "Automation Ref 2021-09-29.xlsx"),
                             sheet = "Site Mappings")
 pod_mappings <- read_excel(paste0(user_directory, "/ScheduleData/",
-                                  "Automation Ref 2021-08-16.xlsx"),
+                                  "Automation Ref 2021-09-29.xlsx"),
                            sheet = "Pod Mappings Simple")
 
 # Store today's date
@@ -214,7 +214,7 @@ mssn_admin <- read_excel(
 
 mssn_admin <- mssn_admin[1:nrow(mssn_admin) - 1, ]
 
-colnames(mssn_admin) <- c("ApptDate", "Dose1", "Dose2", "AllDoses")
+colnames(mssn_admin) <- c("ApptDate", "Dose1", "Dose2", "Dose3", "AllDoses")
 ```
 
 ```{r Format Epic schedule data}
@@ -316,8 +316,7 @@ mssn_admin_to_date <- mssn_admin %>%
          Status2 = "Arr",
          ApptDate = as.Date(ApptDate, format = "%B %d, %Y"),
          VaccWeek = as.numeric(
-           floor((ApptDate - vacc_start_first_sun) / 7 +1)),
-         Dose3 = NA) %>%
+           floor((ApptDate - vacc_start_first_sun) / 7 +1))) %>%
   pivot_longer(cols = c("Dose1", "Dose2", "Dose3", "AllDoses"),
                names_to = "Dose",
                values_to = "Count") %>%
