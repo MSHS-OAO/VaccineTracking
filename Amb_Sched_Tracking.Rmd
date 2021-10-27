@@ -147,9 +147,10 @@ sched_data <- raw_data %>%
          # still in scheduled as No Shows
          Status2 = ifelse(ApptDate < (today) & Status == "Sch", "No Show", 
                           # Correct any appts erroneously marked as arrived early
-                          ifelse(report_date < today &
-                                   ApptDate >= today &
-                                   Status == "Arr", "Sch",
+                          ifelse((report_date < today &
+                                    ApptDate >= today &
+                                    Status == "Arr") |
+                                   (ApptDate > today & Status == "Arr"), "Sch",
                                  Status)),
          # Determine whether appointment is for dose 1, 2, or 3 based on
          # scheduled visit type
