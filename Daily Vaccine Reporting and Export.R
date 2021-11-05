@@ -425,6 +425,10 @@ site_dose_mfg_date_templ <- left_join(site_dates_templ,
                                       site_dose_mfg_templ,
                                       by = c("Site" = "Site"))
 
+# Manually remove J&J dose 2 and 3 from template
+site_dose_mfg_date_templ <- site_dose_mfg_date_templ %>%
+  filter(!(Mfg == "J&J" & Dose > 1))
+
 # Combine site, vaccine type, dose, manufacturer, and dates
 site_vax_dose_mfg_date_templ <- left_join(site_vax_templ,
                                           site_dose_mfg_date_templ,
@@ -443,10 +447,6 @@ site_vax_dose_date_templ <- left_join(site_vax_templ,
 # Remove booster shots from peds vaccine type
 site_vax_dose_date_templ <- site_vax_dose_date_templ %>%
   filter(!(VaxType == "Peds" & Dose == 3))
-
-# Manually remove J&J dose 2 and 3 from template
-site_dose_mfg_date_templ <- site_dose_mfg_date_templ %>%
-  filter(!(Mfg == "J&J" & Dose > 1))
 
 # Merge template dataframe with schedule breakdown data
 sched_breakdown <- left_join(site_vax_dose_date_templ,
