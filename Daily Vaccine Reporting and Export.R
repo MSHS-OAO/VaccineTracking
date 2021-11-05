@@ -953,9 +953,9 @@ write_xlsx(export_list, path = paste0(user_directory,
                                       format(Sys.time(), "%m%d%y %H%M"),
                                       ".xlsx"))
 
-rmarkdown::render(input = "Empl_Arrival_Tracking.Rmd",
-                  output_file = paste0(user_directory,
-                                       "/Daily Dashboard Drafts",
-                                       "/Employee Arrival Tracking Tool ",
-                                       format(Sys.Date(), "%Y-%m-%d")))
+# rmarkdown::render(input = "Empl_Arrival_Tracking.Rmd",
+#                   output_file = paste0(user_directory,
+#                                        "/Daily Dashboard Drafts",
+#                                        "/Employee Arrival Tracking Tool ",
+#                                        format(Sys.Date(), "%Y-%m-%d")))
 

@@ -5,7 +5,7 @@ output:
     toc: true
     toc_depth: 3
     toc_float:
-      collapsed: false
+      collapsed: true
 ---
   
 <!-- ### MSHS COVID-19 Vaccine Dose 3 Schedule Tracking -->
@@ -74,10 +74,10 @@ update_walkins <- FALSE
 
 # Import reference data for site and pod mappings
 site_mappings <- read_excel(paste0(user_directory, "/ScheduleData/",
-                                   "Automation Ref 2021-09-29.xlsx"),
+                                   "Automation Ref 2021-11-03.xlsx"),
                             sheet = "Site Mappings")
 pod_mappings <- read_excel(paste0(user_directory, "/ScheduleData/",
-                                  "Automation Ref 2021-09-29.xlsx"),
+                                  "Automation Ref 2021-11-03.xlsx"),
                            sheet = "Pod Mappings Simple")
 
 # MSHS color scheme
@@ -109,6 +109,9 @@ all_sites <- c("MSB",
                "MSVD",
                "Network LI")
 
+# Vaccine types
+vax_types <- c("Adult", "Peds")
+
 report_run_time <- ifelse(hour(Sys.time()) > 14, "PM", "AM")
 
 sched_data_file <- choose.files(
@@ -124,6 +127,8 @@ report_date <- date(file.info(sched_data_file)$ctime)
 raw_data <- read.csv(sched_data_file,
                      stringsAsFactors = FALSE,
                      check.names = FALSE)
+
+# raw_data[, ncol(raw_data)] <- NULL
 
 ```
 
@@ -152,6 +157,11 @@ sched_data <- raw_data %>%
                                     Status == "Arr") |
                                    (ApptDate > today & Status == "Arr"), "Sch",
                                  Status)),
+         # Determine whether the vaccine is an adult or pediatric dose
+         VaxType = ifelse(Department %in% c("1468 MADISON PEDIATRIC VACCINE POD") |
+                            `Provider/Resource` %in% c("DOSE 1 PEDIATRIC [1324684]",
+                                                       "DOSE 2 PEDIATRIC [1324685]"),
+                          "Peds", "Adult"),
          # Determine whether appointment is for dose 1, 2, or 3 based on
          # scheduled visit type
          Dose = ifelse(str_detect(Type, "DOSE 1"), 1,
@@ -189,6 +199,16 @@ doses_templ <- data.frame(
 doses_templ <- doses_templ %>%
   arrange(Dose)
 
+# Create a dataframe of vaccine types
+vax_type_templ <- data.frame(
+  "VaxType" = rep(vax_types,
+                  length(all_sites)),
+  stringsAsFactors = FALSE
+)
+
+vax_type_templ <- vax_type_templ %>%
+  arrange(VaxType)
+
 # Combine site and dates
 site_dates_templ <- data.frame(
   "Site" = rep(all_sites, length(dates_2wks)),
@@ -201,10 +221,33 @@ site_doses_templ <- data.frame(
   "Dose" = doses_templ,
   stringsAsFactors = FALSE)
 
+# Combine site and vaccine types
+site_vax_templ <- data.frame(
+  "Site" = rep(all_sites, length(vax_types)),
+  "VaxType" = vax_type_templ,
+  stringsAsFactors = FALSE
+)
+
+site_vax_templ <- site_vax_templ %>%
+  filter(VaxType %in% c("Adult") |
+           (VaxType %in% c("Peds") & Site %in% c("MSH", "MSBI")))
+
 site_date_dose_templ <- left_join(site_dates_templ,
                                   site_doses_templ,
                                   by = c("Site" = "Site"))
 
+site_vax_dose_templ <- left_join(site_vax_templ,
+                                 site_doses_templ,
+                                 by = c("Site" = "Site"))
+
+site_vax_dose_templ <- site_vax_dose_templ %>%
+  filter(!(VaxType %in% c("Peds") & Dose %in% c(3)))
+
+# Combine site, dose, date, and vaccine type
+site_date_vax_dose_templ <- left_join(site_date_dose_templ,
+                                      site_vax_dose_templ,
+                                      by = c("Site" = "Site",
+                                             "Dose" = "Dose"))
 
 ```
 
@@ -212,13 +255,14 @@ site_date_dose_templ <- left_join(site_dates_templ,
 sched_summary <- sched_data %>%
   filter(Status2 %in% c("Arr", "Sch") &
            ApptDate %in% dates_2wks) %>%
-  group_by(Dose, Site, Status2, ApptDate) %>%
+  group_by(Dose, Site, VaxType, Status2, ApptDate) %>%
   summarize(Count = n(), .groups = "keep")
 
-sched_summary <- left_join(site_date_dose_templ,
+sched_summary <- left_join(site_date_vax_dose_templ,
                            sched_summary,
                            by = c("Site" = "Site",
                                   "Date" = "ApptDate",
+                                  "VaxType" = "VaxType",
                                   "Dose" = "Dose"))
 
 sched_summary <- sched_summary %>%
@@ -226,25 +270,25 @@ sched_summary <- sched_summary %>%
          Status2 = ifelse(is.na(Status2) & Date < today, "Arr",
                           ifelse(is.na(Status2) & Date >= today, "Sch",
                                  Status2))) %>%
-  arrange(Site, Date, Dose, Status2) %>%
+  arrange(VaxType, Site, Date, Dose, Status2) %>%
   mutate(
     # Date = format(Date, "%m/%d/%y"),
          Dose = paste0("Dose", Dose))
 
-sched_summary_table <- pivot_wider(sched_summary,
-                                   names_from = c(Status2, Dose, Date),
-                                   names_sep = "_",
-                                   names_sort = FALSE,
-                                   values_from = Count) %>%
+sched_summary_table <- sched_summary %>%
+  pivot_wider(names_from = c(Status2, VaxType, Dose, Date),
+              names_sep = "_",
+              names_sort = FALSE,
+              values_from = Count) %>%
   adorn_totals(where = "row",
                na.rm = TRUE,
                name = "MSHS") %>%
   pivot_longer(cols = contains("_"),
-               names_to = c("Status2", "Dose", "Date"),
+               names_to = c("Status2", "VaxType", "Dose", "Date"),
                names_sep = "_",
                values_to = "Count") %>%
   # arrange(Site, Date, Status2) %>%
-  pivot_wider(names_from = c(Site, Status2, Date),
+  pivot_wider(names_from = c(Site, Status2, VaxType, Date),
               names_sep = "_",
               names_sort = FALSE,
               values_from = Count) %>%
@@ -252,14 +296,16 @@ sched_summary_table <- pivot_wider(sched_summary,
                na.rm = TRUE,
                name = "AllDoses") %>%
   pivot_longer(cols = contains("_"),
-               names_to = c("Site", "Status2", "Date"),
+               names_to = c("Site", "Status2", "VaxType", "Date"),
                names_sep = "_",
                values_to = "Count") %>%
+  filter(VaxType %in% c("Adult") |
+           (VaxType %in% c("Peds") & Site %in% c("MSH", "MSBI", "MSHS"))) %>%
   mutate(Site = factor(Site, levels = c(all_sites, "MSHS"), ordered = TRUE),
          Dose = factor(Dose, levels = c("Dose1", "Dose2", "Dose3", "AllDoses")),
          Count = replace_na(Count, 0),
          Date = as.Date(Date, format = "%Y-%m-%d")) %>%
-  arrange(Site, Date, Status2) %>%
+  arrange(VaxType, Site, Date, Status2) %>%
   mutate(Date = format(Date, "%m/%d/%y")) %>%
   pivot_wider(names_from = c(Status2, Date),
               names_sep = "_",
@@ -273,15 +319,19 @@ sched_summary_table <- pivot_wider(sched_summary,
 
 ```{r Create a kable for each dose}
 
-sched_data_kable <- function(dose) {
+sched_data_kable <- function(vax_type, dose) {
+  kable_vax_type <- vax_type
+  
   kable_dose <- dose
   
   kable_dose_title <- ifelse(dose == "AllDoses", "All Doses",
                              str_replace(kable_dose, "Dose", "Dose "))
   
   sched_kable_df <- sched_summary_table %>%
-  filter(Dose == kable_dose) %>%
-  mutate(Dose = NULL)
+  filter(VaxType == kable_vax_type,
+           Dose == kable_dose) %>%
+  mutate(VaxType = NULL,
+         Dose = NULL)
   
   sched_summary_cols <- colnames(sched_kable_df)
   sched_summary_table_names <- str_replace(sched_summary_cols,
@@ -300,7 +350,7 @@ sched_data_kable <- function(dose) {
                        escape = FALSE,
                        align = "c",
                        digits = 0,
-                       caption = paste(kable_dose_title, "Schedule"),
+                       caption = paste(kable_vax_type, kable_dose_title, "Schedule"),
                        col.names = sched_summary_table_names) %>%
     kable_styling(bootstrap_options = "hover",
                   position = "center",
@@ -334,85 +384,6 @@ sched_data_kable <- function(dose) {
 
 ```
 
-
-```{r Subset dose 3 schedule data}
-# # Create dose 3 schedule summary for ambulatory team
-# dose3_sch_next_2wks <- sched_data %>%
-#   filter(Status2 %in% c("Arr", "Sch") &
-#            ApptDate %in% dates_2wks &
-#            Dose == 3) %>%
-#   group_by(ApptDate, Site, Status2) %>%
-#   summarize(Count = n())
-# 
-# dose3_sch_next_2wks <- left_join(
-#   site_dates_templ,
-#   dose3_sch_next_2wks, 
-#   by = c("Site" = "Site",
-#          "Date" = "ApptDate")
-# )
-# 
-# dose3_sch_next_2wks <- dose3_sch_next_2wks %>%
-#   mutate(Count = replace_na(Count, 0),
-#          Status2 = ifelse(is.na(Status2) & Date < today, "Arr",
-#                           ifelse(is.na(Status2) & Date >= today, "Sch",
-#                                  Status2)),
-#          Date = format(Date, "%m/%d/%y"))
-# 
-# dose3_sch_next_2wks_cast <- pivot_wider(dose3_sch_next_2wks,
-#                                         names_from = c(Status2, Date),
-#                                         names_sep = "_",
-#                                         names_sort = FALSE,
-#                                         values_from = Count)
-# 
-# dose3_sch_next_2wks_cast <- dose3_sch_next_2wks_cast %>%
-#   adorn_totals(where = "row",
-#                na.rm = TRUE,
-#                name = "MSHS") %>%
-#   adorn_totals(where = "col",
-#                na.rm = TRUE,
-#                name = "Total")
-# 
-# dose3_sch_next_2wks_cast <- dose3_sch_next_2wks_cast %>%
-#   mutate_all(~replace_na(., 0))
-# 
-# col_names_df <- colnames(dose3_sch_next_2wks_cast)
-# col_names_table <- str_replace(col_names_df, regex("^[a-z]*_", ignore_case = TRUE), "")
-# arr_cols <- max(which(str_detect(col_names_df, "Arr"))) - min(which(str_detect(col_names_df, "Arr"))) + 1
-# sch_cols <- max(which(str_detect(col_names_df, "Sch"))) - min(which(str_detect(col_names_df, "Sch"))) + 1
-# 
-# kable_dose3_sch <- kable(dose3_sch_next_2wks_cast, format = "html", escape = FALSE,
-#         align = "c", digits = 0,
-#         # caption = paste("Dose 3 Schedule"),
-#       col.names = col_names_table) %>%
-#   kable_styling(bootstrap_options = "hover",
-#                 position = "center",
-#                 font_size = 11,
-#                 full_width = FALSE) %>%
-#   column_spec(column = c(1,
-#                          ncol(dose3_sch_next_2wks_cast) - 1,
-#                          ncol(dose3_sch_next_2wks_cast)),
-#               border_right = "thin solid lightgray") %>%
-#   add_header_above(c(" " = 1,
-#                      "Arrived Visits" = arr_cols,
-#                      "Scheduled Visits" = sch_cols,
-#                      " " = 1),
-#                    background = c("",
-#                                   sinai_colors[1],
-#                                   sinai_colors[3],
-#                                   ""),
-#                    line = FALSE,
-#                    color = "white") %>%
-#   row_spec(row = nrow(dose3_sch_next_2wks_cast),
-#            bold = TRUE,
-#            italic = TRUE,
-#            hline_after = TRUE) %>%
-#   column_spec(column = ncol(dose3_sch_next_2wks_cast),
-#            bold = TRUE,
-#            italic = TRUE) %>%
-#   scroll_box(width = "800px")
-
-
-```
 
 ```{r Subset dose 3 appointments made yesterday and today for all appointment statuses}
 # Summarize all appointments made yesterday and today, regardless of appointment status
@@ -560,71 +531,100 @@ kable_dose3_made_date_arr_sch <-
 
 ```
 
-## Vaccine Schedules by Dose
+## Adult Vaccine Schedules by Dose
 
 ### All Doses
-```{r Call custom function for schedule for all doses}
-sched_data_kable(dose = "AllDoses")
+```{r Call custom function for schedule for all adult doses}
+sched_data_kable(vax_type = "Adult", dose = "AllDoses")
 
 ```
 
 <br>
 
 ### Dose 1
-```{r Call custom function for schedule for dose 1 appointments}
-sched_data_kable(dose = "Dose1")
+```{r Call custom function for schedule for adult dose 1 appointments}
+sched_data_kable(vax_type = "Adult", dose = "Dose1")
 
 ```
 
 <br>
 
 ### Dose 2
-```{r Call custom function for schedule for dose 2 appointments}
-sched_data_kable(dose = "Dose2")
+```{r Call custom function for schedule for adult dose 2 appointments}
+sched_data_kable(vax_type = "Adult", dose = "Dose2")
 
 ```
 
 <br>
 
 ### Dose 3
-```{r Call custom function for schedule for dose 3 appointments}
-sched_data_kable(dose = "Dose3")
+```{r Call custom function for schedule for adult dose 3 appointments}
+sched_data_kable(vax_type = "Adult", dose = "Dose3")
 
 ```
 <br>
 <br>
 
-## Appts Made Yesterday & Today
+## Peds Vaccine Schedules by Dose
 
-### Dose 3 Appts: All Statuses
-```{r Create kable for scheduled appointments over next 14 days}
+<!-- ### All Doses -->
+<!-- ```{r Call custom function for schedule for all peds doses} -->
+<!-- sched_data_kable(vax_type = "Peds", dose = "AllDoses") -->
 
-# asis_output(paste0("<h4>Based on Epic schedule data as of ",
-#                    format(file.info(sched_data_file)$ctime,
-#                           "%m/%d/%y %I:%M %p"),
-#                    "</h4>"))
-# 
-# asis_output("<br>")
-# asis_output("<h4>Dose 3 Schedule for Next Two Weeks</h4>")
-# kable_dose3_sch
-# 
-# asis_output("<br>")
-# asis_output("<br>")
-# asis_output(paste0("<h4>Dose 3 Schedule for Appointments Made On ",
-#                    made_dates_str,
-#                    "</h4>"))
+<!-- ``` -->
 
-kable_dose3_made_date_all_status
+<br>
 
-asis_output("<br>")
+### Dose 1
+```{r Call custom function for schedule for peds dose 1 appointments}
+sched_data_kable(vax_type = "Peds", dose = "Dose1")
 
 ```
 
-### Dose 3 Appts: Arrived & Scheduled Only
-```{r Test}
+<!-- <br> -->
 
-kable_dose3_made_date_arr_sch
+<!-- ### Dose 2 -->
+<!-- ```{r Call custom function for schedule for peds dose 2 appointments} -->
+<!-- sched_data_kable(vax_type = "Peds", dose = "Dose2") -->
 
-asis_output("<h6><i>End of report.</i></h6>")
+<!-- ``` -->
 
-```
+<!-- <br> -->
+<!-- <br> -->
+
+<!-- ## Adult Appts Made Yesterday & Today -->
+
+<!-- ### Dose 3 Appts: All Statuses (Made on `r made_dates_str`) -->
+<!-- ```{r Create kable for scheduled appointments over next 14 days} -->
+
+<!-- # asis_output(paste0("<h4>Based on Epic schedule data as of ", -->
+<!-- #                    format(file.info(sched_data_file)$ctime, -->
+<!-- #                           "%m/%d/%y %I:%M %p"), -->
+<!-- #                    "</h4>")) -->
+<!-- #  -->
+<!-- # asis_output("<br>") -->
+<!-- # asis_output("<h4>Dose 3 Schedule for Next Two Weeks</h4>") -->
+<!-- # kable_dose3_sch -->
+<!-- #  -->
+<!-- # asis_output("<br>") -->
+<!-- # asis_output("<br>") -->
+<!-- # asis_output(paste0("<h4>Dose 3 Schedule for Appointments Made On ", -->
+<!-- #                    made_dates_str, -->
+<!-- #                    "</h4>")) -->
+
+<!-- kable_dose3_made_date_all_status -->
+
+<!-- asis_output("<br>") -->
+
+<!-- ``` -->
+
+<!-- ### Dose 3 Appts: Arrived & Scheduled Only (Made on `r made_dates_str`) -->
+<!-- ```{r Test} -->
+
+<!-- kable_dose3_made_date_arr_sch -->
+
+<!-- asis_output("<h6><i>End of report.</i></h6>") -->
+
+<!-- ``` -->
+
+<h6><i>End of report.</i></h6>
