@@ -13,6 +13,6 @@ if ("Presidents" %in% list.files("J://")) {
 rmarkdown::render("Weekly_Arrivals_Future_Sched_Tracking.Rmd",
                   output_file = paste0(user_directory,
                                        "/Daily PM Huddle Output/",
-                                       "MSHS Vaccine Summary ",
+                                       "MSHS Vaccine Summary Test ",
                                        format(Sys.Date(), "%m-%d-%y")))
 
