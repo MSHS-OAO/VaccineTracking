@@ -54,7 +54,7 @@ user_path <- paste0(user_directory, "\\*.*")
 
 # Determine whether or not to update an existing repo
 initial_run <- FALSE
-update_repo <- FALSE
+update_repo <- TRUE
 
 # Determine whether or not to update walk-in analysis
 update_walkins <- FALSE
@@ -269,15 +269,7 @@ sched_to_date <- left_join(sched_to_date,
                            unique(pod_mappings[, c("Provider", "Pod Type")]),
                            by = c("Provider/Resource" = "Provider"))
 
-sched_sites <- c("MSH", "MSQ", NA)
-
-# test_stop <- function(x) {
-#   if(sum(is.na(x)) >= 1) {
-#     stop("Check site and department mappings.")
-#   }
-# }
-# 
-# test_stop(sched_sites)
+sched_sites <- unique(sched_to_date$Site)
 
 if(sum(is.na(sched_sites)) > 0) {
   stop("Check site and department mappings.")

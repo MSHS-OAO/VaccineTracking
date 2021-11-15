@@ -278,6 +278,12 @@ sched_to_date <- left_join(sched_to_date,
                            unique(pod_mappings[, c("Provider", "Pod Type")]),
                            by = c("Provider/Resource" = "Provider"))
 
+sched_sites <- unique(sched_to_date$Site)
+
+if(sum(is.na(sched_sites)) > 0) {
+  stop("Check site and department mappings.")
+}
+
 # Assume any pods without a mapping are patient pods
 sched_to_date[is.na(sched_to_date$`Pod Type`), "Pod Type"] <- "Patient"
 
