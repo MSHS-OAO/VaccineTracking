@@ -10,7 +10,7 @@ if ("Presidents" %in% list.files("J://")) {
                            "System Operations/COVID Vaccine")
 }
 
-rmarkdown::render("Adult_Peds_Weekly_Arrivals_Sched_Tracking.Rmd",
+rmarkdown::render("Combined Dashboard Arrived and Sched Appts.Rmd",
                   output_file = paste0(user_directory,
                                        "/Daily PM Huddle Output/",
                                        "MSHS Vaccine Summary ",

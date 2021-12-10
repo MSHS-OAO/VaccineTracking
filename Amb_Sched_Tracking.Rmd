@@ -74,10 +74,10 @@ update_walkins <- FALSE
 
 # Import reference data for site and pod mappings
 site_mappings <- read_excel(paste0(user_directory, "/ScheduleData/",
-                                   "Automation Ref 2021-11-03.xlsx"),
+                                   "Automation Ref 2021-11-22.xlsx"),
                             sheet = "Site Mappings")
 pod_mappings <- read_excel(paste0(user_directory, "/ScheduleData/",
-                                  "Automation Ref 2021-11-03.xlsx"),
+                                  "Automation Ref 2021-11-22.xlsx"),
                            sheet = "Pod Mappings Simple")
 
 # MSHS color scheme
@@ -575,13 +575,27 @@ sched_data_kable(vax_type = "Adult", dose = "Dose3")
 
 <br>
 
+### All Doses
+```{r Call custom function for schedule for all peds appointments}
+sched_data_kable(vax_type = "Peds", dose = "AllDoses")
+
+```
+
+<br>
+
 ### Dose 1
 ```{r Call custom function for schedule for peds dose 1 appointments}
 sched_data_kable(vax_type = "Peds", dose = "Dose1")
 
 ```
 
-<!-- <br> -->
+### Dose 2
+```{r Call custom function for schedule for peds dose 2 appointments}
+sched_data_kable(vax_type = "Peds", dose = "Dose2")
+
+```
+
+<br>
 
 <!-- ### Dose 2 -->
 <!-- ```{r Call custom function for schedule for peds dose 2 appointments} -->
