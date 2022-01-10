@@ -61,10 +61,10 @@ update_walkins <- FALSE
 
 # Import reference data for site and pod mappings
 site_mappings <- read_excel(paste0(user_directory, "/ScheduleData/",
-                                   "Automation Ref 2021-12-10.xlsx"),
+                                   "Automation Ref 2022-01-10.xlsx"),
                             sheet = "Site Mappings")
 pod_mappings <- read_excel(paste0(user_directory, "/ScheduleData/",
-                                  "Automation Ref 2021-12-10.xlsx"),
+                                  "Automation Ref 2022-01-10.xlsx"),
                            sheet = "Pod Mappings Simple")
 
 # Store today's date
@@ -109,6 +109,13 @@ mfg <- c("Pfizer", "Moderna", "J&J")
 
 # Vaccine types
 vax_types <- c("Adult", "Peds")
+
+# Pediatric school based practices
+peds_school_practice_dept <- c("HOSP SBH PS 38",
+                               "HOSP SBH PS 83/ PS 182",
+                               "HOSP SBH PS 108",
+                               "HOSP SBH TPEC",
+                               "HOSP PEDS SCH HEALTH")
 
 # NY zip codes
 ny_zips <- search_state("NY")
@@ -228,7 +235,8 @@ sched_to_date <- sched_to_date %>%
     # Determine whether the vaccine is an adult or pediatric dose
     VaxType = ifelse(Department %in% c("1468 MADISON PEDIATRIC VACCINE POD") |
                        `Provider/Resource` %in% c("DOSE 1 PEDIATRIC [1324684]",
-                                                  "DOSE 2 PEDIATRIC [1324685]"),
+                                                  "DOSE 2 PEDIATRIC [1324685]") |
+                       Department %in% peds_school_practice_dept,
                      "Peds", "Adult"),
     # Determine manufacturer based on immunization field and vaccine type fields
     Mfg = #Keep manufacturer as NA if the appointment hasn't been arrived
