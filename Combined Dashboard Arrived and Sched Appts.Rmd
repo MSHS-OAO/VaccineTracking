@@ -79,10 +79,10 @@ update_repo <- TRUE
 
 # Import reference data for site and pod mappings
 site_mappings <- read_excel(paste0(user_directory, "/ScheduleData/",
-                                   "Automation Ref 2022-01-10.xlsx"),
+                                   "Automation Ref 2022-01-18.xlsx"),
                             sheet = "Site Mappings")
 pod_mappings <- read_excel(paste0(user_directory, "/ScheduleData/",
-                                  "Automation Ref 2022-01-10.xlsx"),
+                                  "Automation Ref 2022-01-18.xlsx"),
                            sheet = "Pod Mappings Simple")
 
 # Store today's date
@@ -865,6 +865,7 @@ arr_sch_visits_kable(vax_type = "Peds", dose = 1)
 
 ```
 
+
 <p></p>
 ##### <span style = "color:#00AEEF">Peds - Dose 2</span>
 <p></p>
@@ -876,3 +877,6 @@ asis_output("<h3>  </h3>")
 arr_sch_visits_kable(vax_type = "Peds", dose = 2)
 
 ```
+
+#### {-}
+<h5><i>Appointments at school-based practices included in MSH volume.</i></h5>

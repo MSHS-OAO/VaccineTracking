@@ -61,10 +61,10 @@ update_walkins <- FALSE
 
 # Import reference data for site and pod mappings
 site_mappings <- read_excel(paste0(user_directory, "/ScheduleData/",
-                                   "Automation Ref 2022-01-18.xlsx"),
+                                   "Automation Ref 2022-01-31.xlsx"),
                             sheet = "Site Mappings")
 pod_mappings <- read_excel(paste0(user_directory, "/ScheduleData/",
-                                  "Automation Ref 2022-01-18.xlsx"),
+                                  "Automation Ref 2022-01-31.xlsx"),
                            sheet = "Pod Mappings Simple")
 
 # Store today's date
@@ -116,6 +116,7 @@ peds_school_practice_dept <- c("HOSP SBH PS 38",
                                "HOSP SBH PS 108",
                                "HOSP SBH TPEC",
                                "HOSP PEDS SCH HEALTH")
+
 
 # NY zip codes
 ny_zips <- search_state("NY")
