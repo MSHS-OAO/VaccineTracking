@@ -79,10 +79,10 @@ update_repo <- TRUE
 
 # Import reference data for site and pod mappings
 site_mappings <- read_excel(paste0(user_directory, "/ScheduleData/",
-                                   "Automation Ref 2022-03-02.xlsx"),
+                                   "Automation Ref 2022-03-21.xlsx"),
                             sheet = "Site Mappings")
 pod_mappings <- read_excel(paste0(user_directory, "/ScheduleData/",
-                                  "Automation Ref 2022-03-02.xlsx"),
+                                  "Automation Ref 2022-03-21.xlsx"),
                            sheet = "Pod Mappings Simple")
 
 # Store today's date
@@ -281,7 +281,10 @@ epic_sched_to_date <- epic_sched_to_date %>%
     Status2 = ifelse(ApptDate < (today) & Status == "Sch", "No Show", Status),
     # Determine whether the vaccine is an adult or pediatric dose
     VaxType = ifelse(Department %in% c("1468 MADISON PEDIATRIC VACCINE POD",
-                                       "1468 MADISON HOSP PEDS GEN") |
+                                       "1468 MADISON HOSP PEDS GEN",
+                                       "10 UNION SQ E PEDS GEN",
+                                       "234 E 85TH ST PEDS GEN",
+                                       "5 E 98  PEDS GENERAL") |
                        `Provider/Resource` %in% c("DOSE 1 PEDIATRIC [1324684]",
                                                   "DOSE 2 PEDIATRIC [1324685]"),
                      "Peds", "Adult"),

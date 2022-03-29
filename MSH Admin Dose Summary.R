@@ -54,19 +54,19 @@ if ("Presidents" %in% list.files("J://")) {
 user_path <- paste0(user_directory, "\\*.*")
 
 # Determine whether or not to update an existing repo
-update_repo <- TRUE
+update_repo <- FALSE
 
 # Import reference data for site and pod mappings
 site_mappings <- read_excel(paste0(user_directory, "/ScheduleData/",
-                                   "Automation Ref 2022-03-02.xlsx"),
+                                   "Automation Ref 2022-03-21.xlsx"),
                             sheet = "Site Mappings")
 pod_mappings <- read_excel(paste0(user_directory, "/ScheduleData/",
-                                  "Automation Ref 2022-03-02.xlsx"),
+                                  "Automation Ref 2022-03-21.xlsx"),
                            sheet = "Pod Mappings Simple")
 
 dept_grouping <- read_excel(paste0(user_directory,
                                    "/ScheduleData/",
-                                   "Automation Ref 2022-03-02.xlsx",)
+                                   "Automation Ref 2022-03-21.xlsx"),
                                    sheet = "Dept Mapping and Grouping")
 
 # Store today's date
@@ -112,16 +112,16 @@ mfg <- c("Pfizer", "Moderna", "J&J")
 # Vaccine types
 vax_types <- c("Adult", "Peds")
 
-# Pediatric school based practices
-peds_school_practice_dept <- c("HOSP SBH PS 38",
-                               "HOSP SBH PS 83/ PS 182",
-                               "HOSP SBH PS 108",
-                               "HOSP SBH TPEC",
-                               "HOSP PEDS SCH HEALTH")
+# Dept grouper
+dept_group <- c("Hospital POD", "School Based Practice", "MSHS Practice")
 
+# # Pediatric school based practices
+# peds_school_practice_dept <- c("HOSP SBH PS 38",
+#                                "HOSP SBH PS 83/ PS 182",
+#                                "HOSP SBH PS 108",
+#                                "HOSP SBH TPEC",
+#                                "HOSP PEDS SCH HEALTH")
 
-# NY zip codes
-ny_zips <- search_state("NY")
 
 # Import schedule repository and determine last date it was updated
 sched_repo_file <- choose.files(default = paste0(user_directory,
@@ -168,13 +168,92 @@ sched_to_date <- sched_to_date %>%
                      # Correct any appts erroneously marked as arrived early
                      ifelse(ApptDate >= today & Status == "Arr", "Sch",
                             Status)),
-    # Determine whether the vaccine is an adult or pediatric dose
-    VaxType = ifelse(Department %in% c("1468 MADISON PEDIATRIC VACCINE POD",
-                                       "1468 MADISON HOSP PEDS GEN") |
-                       `Provider/Resource` %in% c("DOSE 1 PEDIATRIC [1324684]",
-                                                  "DOSE 2 PEDIATRIC [1324685]") |
-                       Department %in% peds_school_practice_dept,
-                     "Peds", "Adult"),
+    # # Determine whether the vaccine is an adult or pediatric dose
+    # VaxType = ifelse(Department %in% c("1468 MADISON PEDIATRIC VACCINE POD",
+    #                                    "1468 MADISON HOSP PEDS GEN") |
+    #                    `Provider/Resource` %in% c("DOSE 1 PEDIATRIC [1324684]",
+    #                                               "DOSE 2 PEDIATRIC [1324685]") |
+    #                    Department %in% peds_school_practice_dept,
+    #                  "Peds", "Adult"),
+    # # Determine manufacturer based on immunization field and vaccine type fields
+    # Mfg = #Keep manufacturer as NA if the appointment hasn't been arrived
+    #   ifelse(Status2 != "Arr", NA,
+    #          # Any blank immunizations and any peds assumed to be Pfizer
+    #          ifelse(is.na(Immunizations) |
+    #                   VaxType %in% c("Peds"), "Pfizer",
+    #                 # Any immunizations with Moderna in text classified as Moderna
+    #                 ifelse(str_detect(Immunizations, "Moderna"), "Moderna",
+    #                        # Any visiting docs or Johnson and Johnson
+    #                        # immunizations classified as J&J
+    #                        ifelse(str_detect(Department, "VISITING DOCS") |
+    #                                 str_detect(Immunizations,
+    #                                            "Johnson and Johnson"),
+    #                               "J&J", "Pfizer")))),
+    # Determine week number of year
+    WeekNum = format(ApptDate, "%U"),
+    # Determine appointment day of week
+    DOW = weekdays(ApptDate),
+    # # Determine if patient's zip code is in NYS
+    # NYZip = substr(`ZIP Code`, 1, 5) %in% ny_zips$zipcode,
+    # Determine if patient is a MSHS employee based on response to question
+    MSHSEmployee =
+      # First see if patient responded "YES" to question about MSHS employee
+      str_detect(
+        str_replace_na(IsPtEmployee, ""),
+        regex("yes", ignore_case = TRUE)) |
+      # Next, see if there is a MSHS site listed for patients who were vaccinated
+      # prior to the addition of the MSHS employee field
+      str_detect(
+        str_replace_na(`MOUNT SINAI HEALTH SYSTEM`, " "),
+        regex("[a-z]", ignore_case = TRUE)))
+
+# Crosswalk sites and department grouper
+sched_to_date <- left_join(sched_to_date, dept_grouping,
+                           by = c("Department" = "Department"))
+
+unmapped_dept <- sched_to_date %>%
+  filter(is.na(Site)) %>%
+  select(Department) %>%
+  distinct()
+
+if(nrow(unmapped_dept) > 0) {
+  stop(paste0("Check department mappings. Missing departments include ",
+             paste(as.vector(unmapped_dept$Department), collapse = ", "),
+             "."))
+}
+
+sched_to_date <- sched_to_date %>%
+  mutate(
+    # Create a column for age grouper
+    Age_Grouper = ifelse(str_detect(Age, "\\ y.o."), "years",
+                        ifelse(str_detect(Age, "\\ m.o."), "months",
+                               ifelse(str_detect(Age, "\\ days"), "days",
+                                      "unknown"))),
+    # Convert string with age to numeric
+    Age_Numeric = 
+      ifelse(Age_Grouper == "years",
+                    as.numeric(str_extract(Age,
+                                 # pattern = "(?<=Deceased\\ \\().+(?=\\ y.o.)")),
+                                 paste("(?<=Deceased\\ \\()[0-9]+(?=\\ y.o.)",
+                                       "[0-9]+(?=\\ y.o.)",
+                                       sep = "|"))),
+                    ifelse(Age_Grouper == "months",
+                           as.numeric(str_extract(Age, "[0-9]+(?=\\ m.o.)")) / 12,
+                           ifelse(Age_Grouper == "days",
+                                  as.numeric(
+                                    str_extract(Age, "[0-9]+(?=\\ days)")) / 365,
+                                  ifelse(Age_Grouper == "unknown", 10000,
+                                         NA_integer_)))),
+    # Determine vaccine type based on department, provider/resource, and age if necessary
+    VaxType = ifelse(
+      AgeGroup %in% "Peds" |
+        (AgeGroup %in% "Both" &
+           # Determine if provider/resource at MSBI is peds
+           (`Provider/Resource` %in% c("DOSE 1 PEDIATRIC [1324684]",
+                                       "DOSE 2 PEDIATRIC [1324685]") |
+              (Grouping %in% c("School Based Practice", "MSHS Practice") &
+                 Age_Numeric < 12))),
+      "Peds", "Adult"),
     # Determine manufacturer based on immunization field and vaccine type fields
     Mfg = #Keep manufacturer as NA if the appointment hasn't been arrived
       ifelse(Status2 != "Arr", NA,
@@ -189,48 +268,53 @@ sched_to_date <- sched_to_date %>%
                                     str_detect(Immunizations,
                                                "Johnson and Johnson"),
                                   "J&J", "Pfizer")))),
-    # Determine week number of year
-    WeekNum = format(ApptDate, "%U"),
-    # Determine appointment day of week
-    DOW = weekdays(ApptDate),
-    # Determine if patient's zip code is in NYS
-    NYZip = substr(`ZIP Code`, 1, 5) %in% ny_zips$zipcode,
-    # Determine if patient is a MSHS employee based on response to question
-    MSHSEmployee =
-      # First see if patient responded "YES" to question about MSHS employee
-      str_detect(
-        str_replace_na(IsPtEmployee, ""),
-        regex("yes", ignore_case = TRUE)) |
-      # Next, see if there is a MSHS site listed for patients who were vaccinated
-      # prior to the addition of the MSHS employee field
-      str_detect(
-        str_replace_na(`MOUNT SINAI HEALTH SYSTEM`, " "),
-        regex("[a-z]", ignore_case = TRUE)))
-
-# Crosswalk sites
-sched_to_date <- left_join(sched_to_date, site_mappings,
-                           by = c("Department" = "Department"))
-
-# Manually update discrepancies in site/mfg/dose
-sched_to_date <- sched_to_date %>%
-  mutate(# Roll up any Moderna administered at MSB for YWCA to MSH
+    # Roll up any Moderna administered at MSB for YWCA to MSH
     Site = ifelse(Site %in% c("MSB") & Mfg %in% c("Moderna"), "MSH", Site),
     # Manually correct any J&J doses erroneously documented as dose 2 and change to dose 1
-    Dose = ifelse(Mfg %in% c("J&J") & Dose %in% c(2), 1, Dose))
+    Dose = ifelse(Mfg %in% c("J&J") & Dose %in% c(2), 1, Dose),
+    Site_Subgroup = ifelse(Grouping %in% "School Based Practice", Department,
+                           Site))
 
-# Crosswalk pod type (employee vs patient)
-sched_to_date <- left_join(sched_to_date,
-                           unique(pod_mappings[, c("Provider", "Pod Type")]),
-                           by = c("Provider/Resource" = "Provider"))
+test_df <- sched_to_date %>%
+  select(Department, `Provider/Resource`, Site, Grouping,
+         Age, AgeGroup, Age_Numeric, VaxType) %>%
+  distinct()
 
-sched_sites <- unique(sched_to_date$Site)
+# # Manually update discrepancies in site/mfg/dose
+# sched_to_date <- sched_to_date %>%
+#   mutate(# Roll up any Moderna administered at MSB for YWCA to MSH
+#     Site = ifelse(Site %in% c("MSB") & Mfg %in% c("Moderna"), "MSH", Site),
+#     # Manually correct any J&J doses erroneously documented as dose 2 and change to dose 1
+#     Dose = ifelse(Mfg %in% c("J&J") & Dose %in% c(2), 1, Dose))
+# 
+# # Crosswalk pod type (employee vs patient)
+# sched_to_date <- left_join(sched_to_date,
+#                            unique(pod_mappings[, c("Provider", "Pod Type")]),
+#                            by = c("Provider/Resource" = "Provider"))
+# 
+# # Assume any pods without a mapping are patient pods
+# sched_to_date[is.na(sched_to_date$`Pod Type`), "Pod Type"] <- "Patient"
 
-if(sum(is.na(sched_sites)) > 0) {
-  stop("Check site and department mappings.")
-}
+# Summarize data for dashboard visualizations
+summary_all_doses <- sched_to_date %>%
+  filter(Status2 %in% "Arr") %>%
+  group_by(Grouping, Site_Subgroup, VaxType) %>%
+  summarize(Count = n()) %>%
+  rename(Setting = Grouping,
+         Site = Site_Subgroup) %>%
+  arrange(Setting, VaxType, -Count) %>%
+  pivot_wider(names_from = VaxType,
+              values_from = Count) %>%
+  ungroup() %>%
+  split(.$Setting) %>%
+    # relocate(Setting, .after = Site) %>%
+    map_df(., function(x) {
+      adorn_totals(x, where = "row",
+                        name = unique(x$Setting),
+                        fill = "MSHS Total")})
+  
 
-# Assume any pods without a mapping are patient pods
-sched_to_date[is.na(sched_to_date$`Pod Type`), "Pod Type"] <- "Patient"
+
 
 # MSH Summary
 msh_summary <- sched_to_date %>%
