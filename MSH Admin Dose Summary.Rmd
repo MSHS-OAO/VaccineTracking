@@ -50,45 +50,37 @@ library(janitor)
 ```
 
 ```{r Set directory, import reference data, and repository, include = FALSE}
-# Set working directory and select raw data ----------------------------
-rm(list = ls())
-
-# Determine path for working directory
-if ("Presidents" %in% list.files("J://")) {
-  user_directory <- paste0("J:/Presidents/HSPI-PM/",
-                           "Operations Analytics and Optimization/Projects/",
-                           "System Operations/COVID Vaccine")
-} else {
-  user_directory <- paste0("J:/deans/Presidents/HSPI-PM/",
-                           "Operations Analytics and Optimization/Projects/",
-                           "System Operations/COVID Vaccine")
-}
+# # Set working directory and select raw data ----------------------------
+# rm(list = ls())
+# 
+# # Determine path for working directory
+# if ("Presidents" %in% list.files("J://")) {
+#   user_directory <- paste0("J:/Presidents/HSPI-PM/",
+#                            "Operations Analytics and Optimization/Projects/",
+#                            "System Operations/COVID Vaccine")
+# } else {
+#   user_directory <- paste0("J:/deans/Presidents/HSPI-PM/",
+#                            "Operations Analytics and Optimization/Projects/",
+#                            "System Operations/COVID Vaccine")
+# }
 
 # Set path for file selection
 user_path <- paste0(user_directory, "\\*.*")
 
-# Determine whether or not to update an existing repo
-update_repo <- FALSE
+# # Determine whether or not to update an existing repo
+# update_repo <- FALSE
 
 # Import reference data for site and pod mappings
-dept_mappings <- read_excel(paste0(user_directory, "/Reference File Apr 2022/",
-                                   "MSHS COVID-19 Vaccine Department Mappings 2022-04-05.xlsx"))
+dept_mappings <- read_excel(paste0(
+  user_directory,
+  "/Weekly Dashboard Doses Administered",
+  "/MSHS COVID-19 Vaccine Department Mappings 2022-04-05.xlsx"))
 
 dept_mappings <- dept_mappings %>%
   select(-`Site (Historical)`, -Notes)
 
 # Store today's date
 today <- Sys.Date()
-
-# Create dataframe with dates and weeks
-all_dates <- data.frame("Date" = seq.Date(as.Date("1/1/20",
-                                                  format = "%m/%d/%y"),
-                                          as.Date("12/31/21",
-                                                  format = "%m/%d/%y"),
-                                          by = 1))
-all_dates <- all_dates %>%
-  mutate(Year = year(Date),
-         WeekNum = format(Date, "%U"))
 
 # Site order
 all_sites <- c("MSB",
@@ -98,18 +90,7 @@ all_sites <- c("MSB",
                "MSQ",
                "MSW",
                "MSVD",
-               "Network LI")#,
-# "MSHS")
-
-# Site order
-city_sites <- c("MSB",
-                "MSBI",
-                "MSH",
-                "MSM",
-                "MSQ",
-                "MSW",
-                "MSVD")#,
-# "MSHS")
+               "Network LI")
 
 # Vaccine types
 vax_types <- c("Adult", "Peds")
@@ -119,7 +100,6 @@ dept_group <- c("Hospital POD", "MSHS Practice")
 ```
 
 ```{r Import existing repo and append as needed}
-
 # Import schedule repository and determine last date it was updated
 sched_repo_file <- choose.files(default = paste0(user_directory,
                                                  "/R_Sched_AM_Repo/*.*"))
@@ -130,7 +110,12 @@ sched_repo_update_date <- date(file.info(sched_repo_file)$ctime)
 if (update_repo) {
   
   # Determine date range of reports to add to repository
-  new_report_dates <- seq.Date(sched_repo_update_date, today - 1, by = 1)
+  if (sched_repo_update_date == today - 1) {
+    new_report_dates <- today - 1
+  } else {
+    new_report_dates <- seq.Date(sched_repo_update_date, today - 1, by = 1)
+  }
+  
   new_report_dates_pattern <- format(new_report_dates, "%Y%m%d")
   
   # Find list of reports
@@ -206,7 +191,7 @@ sched_to_date <- sched_to_date %>%
     Dose = ifelse(str_detect(Type, "DOSE 1"), "Dose 1",
                   ifelse(str_detect(Type, "DOSE 2"), "Dose 2",
                          ifelse(str_detect(Type, "(DOSE 3)|(BOOSTER)"),
-                                "Dose 3/Booster", NA))),
+                                "Dose 3/Boosters", NA))),
     # Determine appointment date, year, month, etc.
     ApptDate = date(Date),
     ApptYear = year(Date),
@@ -221,13 +206,6 @@ sched_to_date <- sched_to_date %>%
     # Group arrived, completed, and checked out appts as arrived
     Status = ifelse(`Appt Status` %in% c("Arrived", "Comp", "Checked Out"),
                     "Arr", `Appt Status`),
-    # (Only needed when manually pulling data in the morning)
-    # Classify any arrivals from today as scheduled for morning export and
-    # classify any appts from prior days that are still in scheduled status as
-    # no shows
-    # Status2 = ifelse(ApptDate == today & Status == "Arr", "Sch",
-    #                  ifelse(ApptDate < today & Status == "Sch", "No Show",
-    # Status)),
     # Update appointment status: classify any appts from prior days that are
     # still in scheduled as No Shows
     Status2 = ifelse(ApptDate < (today) & Status == "Sch", "No Show", 
@@ -340,14 +318,16 @@ sched_to_date <- sched_to_date %>%
                                     str_detect(Immunizations,
                                                "Johnson and Johnson"),
                                   "J&J", "Pfizer")))),
-    # Roll up any Moderna administered at MSB for YWCA to MSH
-    Site = ifelse(Site %in% c("MSB") & Mfg %in% c("Moderna"), "MSH",
-                  ifelse(`Setting Grouper` %in% "School Based Practice" &
-                           VaxType %in% "Peds", "Peds School Based Practice",
-                         ifelse(`Setting Grouper` %in% "School Based Practice" &
-                                  VaxType %in% "Adult",
-                                "Adolescent School Based Practice",
-                                Site))),
+    Site =
+      # Roll up any Moderna administered at MSB for YWCA to MSH
+      ifelse(Site %in% c("MSB") & Mfg %in% c("Moderna"), "MSH",
+             # Manually classify school practices as peds or adolescent for schools administering both
+             ifelse(`Setting Grouper` %in% "School Based Practice" &
+                      VaxType %in% "Peds", "Peds School Based Practice",
+                    ifelse(`Setting Grouper` %in% "School Based Practice" &
+                             VaxType %in% "Adult",
+                           "Adolescent School Based Practice",
+                           Site))),
     # Manually correct any J&J doses erroneously documented as dose 2 and change to dose 1
     Dose = ifelse(Mfg %in% c("J&J") & Dose %in% c("Dose 2"), "Dose 1", Dose),
     `Setting Grouper` = ifelse(`Setting Grouper` %in% "School Based Practice",
@@ -358,21 +338,6 @@ vax_admin_start_date <- min(sched_to_date$ApptDate[
 
 vax_admin_end_date <- max(sched_to_date$ApptDate[
   which(sched_to_date$Status2 %in% "Arr")])
-
-# # Manually update discrepancies in site/mfg/dose
-# sched_to_date <- sched_to_date %>%
-#   mutate(# Roll up any Moderna administered at MSB for YWCA to MSH
-#     Site = ifelse(Site %in% c("MSB") & Mfg %in% c("Moderna"), "MSH", Site),
-#     # Manually correct any J&J doses erroneously documented as dose 2 and change to dose 1
-#     Dose = ifelse(Mfg %in% c("J&J") & Dose %in% c(2), 1, Dose))
-# 
-# # Crosswalk pod type (employee vs patient)
-# sched_to_date <- left_join(sched_to_date,
-#                            unique(pod_mappings[, c("Provider", "Pod Type")]),
-#                            by = c("Provider/Resource" = "Provider"))
-# 
-# # Assume any pods without a mapping are patient pods
-# sched_to_date[is.na(sched_to_date$`Pod Type`), "Pod Type"] <- "Patient"
 
 ```
 
