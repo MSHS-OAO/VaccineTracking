@@ -64,7 +64,7 @@ site_mappings <- read_excel(paste0(user_directory, "/ScheduleData/",
                                    "Automation Ref 2022-03-21.xlsx"),
                             sheet = "Site Mappings")
 pod_mappings <- read_excel(paste0(user_directory, "/ScheduleData/",
-                                  "Automation Ref 2022-03-0.1xlsx"),
+                                  "Automation Ref 2022-03-21.xlsx"),
                            sheet = "Pod Mappings Simple")
 
 # Store today's date

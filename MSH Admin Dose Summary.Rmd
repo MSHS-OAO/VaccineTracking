@@ -47,6 +47,7 @@ library(zipcodeR)
 library(tidyr)
 library(purrr)
 library(janitor)
+library(DT)
 ```
 
 ```{r Set directory, import reference data, and repository, include = FALSE}
@@ -74,7 +75,7 @@ user_path <- paste0(user_directory, "\\*.*")
 dept_mappings <- read_excel(paste0(
   user_directory,
   "/Weekly Dashboard Doses Administered",
-  "/MSHS COVID-19 Vaccine Department Mappings 2022-04-05.xlsx"))
+  "/MSHS COVID-19 Vaccine Department Mappings 2022-04-11.xlsx"))
 
 dept_mappings <- dept_mappings %>%
   select(-`Site (Historical)`, -Notes)
@@ -424,7 +425,7 @@ kable(subset_data,
       escape = FALSE,
       align = "l",
       digits = 0,
-      caption = paste("MSHS", setting, vax_type,
+      caption = paste(setting, vax_type,
                       "Vaccine Doses Administered"))%>%
   kable_styling(bootstrap_options = "hover", 
                 font_size = 11,
@@ -441,7 +442,7 @@ kable(subset_data,
 
 ```
 
-### Hospital Based PODS
+### Hospital POD
 ```{r Create tables for hospital POD vaccine summary}
 
 setting_kable(setting = "Hospital POD",
@@ -462,6 +463,42 @@ setting_kable(setting = "MSHS Practice",
               vax_type = "Peds")
 
 ```
+
+### Reference
+
+**Data Source**
+
+Analysis based on Epic schedule data.
+
+***
+
+**Department Mappings**
+```{r Reference tab with data sources and mappings}
+dept_mappings_dt <- dept_mappings %>%
+  # relocate(`Setting Grouper`) %>%
+  relocate(Department, .after = `New Site`) %>%
+  relocate(`Vaccine Age Group`, .after = Department) %>%
+  rename(Site = `New Site`,
+         Setting = `Setting Grouper`,
+         `Vaccine Administered` = `Vaccine Age Group`) %>%
+  mutate(Setting = ifelse(Setting %in% "School Based Practice",
+                          "MSHS Practice", Setting),
+         `Vaccine Administered` = ifelse(`Vaccine Administered` %in% "Both",
+                                         "Adult & Peds",
+                                         `Vaccine Administered`)) %>%
+  arrange(Setting, Site, Department)
+
+datatable(dept_mappings_dt,
+          rownames = FALSE,
+          options = list(
+            pageLength = 20,
+            paging = TRUE
+          ))
+
+
+```
+
+
 
 <!-- ### School Based Practices -->
 <!-- ```{r Create tables for school based practice vaccine summary} -->
