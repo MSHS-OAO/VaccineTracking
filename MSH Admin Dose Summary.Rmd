@@ -237,20 +237,7 @@ sched_to_date <- sched_to_date %>%
     # Determine week number of year
     WeekNum = format(ApptDate, "%U"),
     # Determine appointment day of week
-    DOW = weekdays(ApptDate),
-    # # Determine if patient's zip code is in NYS
-    # NYZip = substr(`ZIP Code`, 1, 5) %in% ny_zips$zipcode,
-    # Determine if patient is a MSHS employee based on response to question
-    # MSHSEmployee =
-    #   # First see if patient responded "YES" to question about MSHS employee
-    #   str_detect(
-    #     str_replace_na(IsPtEmployee, ""),
-    #     regex("yes", ignore_case = TRUE)) |
-    #   # Next, see if there is a MSHS site listed for patients who were vaccinated
-    #   # prior to the addition of the MSHS employee field
-    #   str_detect(
-    #     str_replace_na(`MOUNT SINAI HEALTH SYSTEM`, " "),
-    #     regex("[a-z]", ignore_case = TRUE))
+    DOW = weekdays(ApptDate)
     )
 
 # Crosswalk sites and department grouper
@@ -298,12 +285,13 @@ sched_to_date <- sched_to_date %>%
     # Determine vaccine type based on department, provider/resource, and age if necessary
     VaxType = ifelse(
       `Vaccine Age Group` %in% "Peds" |
-        (`Vaccine Age Group` %in% "Both" &
-           # Determine if provider/resource at MSBI is peds
-           (`Provider/Resource` %in% c("DOSE 1 PEDIATRIC [1324684]",
+        # MSBI Peds POD
+        `Provider/Resource` %in% c("DOSE 1 PEDIATRIC [1324684]",
                                        "DOSE 2 PEDIATRIC [1324685]") |
-              (`Setting Grouper` %in% c("School Based Practice", "MSHS Practice") &
-                 Age_Numeric < 12))),
+        # Practics that administer adult and pediatric vaccines
+        (`Vaccine Age Group` %in% "Both" &
+              `Setting Grouper` %in% c("School Based Practice", "MSHS Practice") &
+                 Age_Numeric < 12),
       "Peds", "Adult"),
     # Determine manufacturer based on immunization field and vaccine type fields
     Mfg = #Keep manufacturer as NA if the appointment hasn't been arrived
