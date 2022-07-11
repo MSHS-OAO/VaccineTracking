@@ -146,7 +146,11 @@ if (update_repo) {
                Date = as.Date(Date, "%m/%d/%Y"),
                `Appt Time` = as.POSIXct(paste("1899-12-31 ", `Appt Time`),
                                         tz = "", format = "%Y-%m-%d %H:%M %p"),
-               `ZIP Code` = substr(`ZIP Code`, 2, nchar(`ZIP Code`)))})
+               `ZIP Code` = substr(`ZIP Code`, 2, nchar(`ZIP Code`)),
+               `PATIENTS LIFE NUMBER OR ORACLE NUMBER` = as.character(
+                 `PATIENTS LIFE NUMBER OR ORACLE NUMBER`))
+      }
+    )
   
   # Filter schedule data from new reports to only keep appointments in latest reports
   sched_data_new_reports <- import_new_reports %>%
