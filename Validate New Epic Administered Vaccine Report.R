@@ -250,12 +250,30 @@ validate_end_date <- min(epic_df_max_date, sched_repo_max_date)
 epic_df_validate <- epic_df %>%
   filter(Existing_Dept &
            ImmunizationDate >= validate_start_date &
-           ImmunizationDate <= validate_end_date)
+           ImmunizationDate <= validate_end_date) %>%
+  mutate(MRN_VaxDate = paste(MRN, ImmunizationDate))
 
 sched_to_date_validate <- sched_to_date %>%
   filter(Status2 %in% "Arr" &
            ApptDate >= validate_start_date &
-           ApptDate <= validate_end_date)
+           ApptDate <= validate_end_date) %>%
+  mutate(MRN_VaxDate = paste(MRN, ApptDate),
+         MRN_VaxDate_Epic = MRN_VaxDate %in% epic_df_validate$MRN_VaxDate)
+
+comparison_df <- sched_to_date_validate %>%
+  group_by(Site) %>%
+  summarize(Total_Arrived = n(),
+            Matched_In_Epic = sum(MRN_VaxDate_Epic)) %>%
+  adorn_totals(where = "row",
+               name = "MSHS") %>%
+  mutate(PercentMatch = (Matched_In_Epic / Total_Arrived))
+
+write_xlsx(comparison_df,
+           path = paste0(user_directory,
+                         "/Epic Vaccines Administered Report",
+                         "/Schedule and Admin Comparison Data ",
+                         format(Sys.Date(), "%Y-%m-%d"),
+                         ".xlsx"))
 
 # Summarize data from new Epic report and schedule repository
 epic_summary <- epic_df_validate %>%
