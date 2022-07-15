@@ -260,6 +260,10 @@ sched_to_date_validate <- sched_to_date %>%
   mutate(MRN_VaxDate = paste(MRN, ApptDate),
          MRN_VaxDate_Epic = MRN_VaxDate %in% epic_df_validate$MRN_VaxDate)
 
+epic_df_validate <- epic_df_validate %>%
+  mutate(MRN_VaxDate_Sched = MRN_VaxDate %in% sched_to_date_validate$MRN_VaxDate,
+         Month = floor_date(ImmunizationDate, "months"))
+
 comparison_df <- sched_to_date_validate %>%
   group_by(Site) %>%
   summarize(Total_Arrived = n(),
@@ -268,27 +272,98 @@ comparison_df <- sched_to_date_validate %>%
                name = "MSHS") %>%
   mutate(PercentMatch = (Matched_In_Epic / Total_Arrived))
 
-write_xlsx(comparison_df,
+# Summarize data from new Epic report and schedule repository
+epic_summary <- epic_df %>%
+  filter(ImmunizationDate >= validate_start_date &
+           ImmunizationDate <= validate_end_date) %>%
+  mutate(Month = floor_date(ImmunizationDate, "months")) %>%
+  group_by(`New Site`, DEPARTMENT_NAME, Month) %>%
+  summarize(Epic_Admin_Count = n()) %>%
+  arrange(`New Site`, DEPARTMENT_NAME, Month)
+
+sched_repo_summary <-sched_to_date %>%
+  filter(Status2 %in% "Arr" &
+           ApptDate >= validate_start_date &
+           ApptDate <= validate_end_date) %>%
+  mutate(Month = floor_date(ApptDate, "months")) %>%
+  group_by(Site, Department, Month) %>%
+  summarize(Sched_Repo_Count = n()) %>%
+  arrange(Site, Department, Month)
+
+total_volume_compare <- full_join(epic_summary, sched_repo_summary,
+                           by = c("New Site" = "Site",
+                                  "DEPARTMENT_NAME" = "Department",
+                                  "Month" = "Month"))
+
+
+# test_list <- map_df(
+#   total_volume_compare %>%
+#     split(., .$DEPARTMENT_NAME),
+#   .f = 
+#     ~ adorn_totals(., where = "row"))
+
+
+# test_list <- total_volume_compare %>%
+#     split(., .$DEPARTMENT_NAME)
+  
+# a <- test_list[[1]] %>%
+#   pivot_longer(cols = c("Epic_Admin_Count", "Sched_Repo_Count"),
+#                names_to = "Data_Source",
+#                values_to = "Count") %>%
+#   pivot_wider(names_from = c(Month),
+#               values_from = Count) %>%
+#   adorn_totals(where = "col",
+#                name = "Jan-June 2022 Total") %>%
+#   pivot_longer(cols = where(is.numeric),
+#                names_to = "Month") %>%
+#   pivot_wider(names_from = Data_Source,
+#               values_from = value)
+
+total_volume_monthly_comparison <- map_df(
+  total_volume_compare %>%
+    split(., .$DEPARTMENT_NAME),
+  .f = ~ pivot_longer(., cols = c("Epic_Admin_Count", "Sched_Repo_Count"),
+                      names_to = "Data_Source",
+                      values_to = "Count") %>%
+    pivot_wider(names_from = c(Month),
+                values_from = Count) %>%
+    adorn_totals(where = "col",
+                 name = "Jan-June 2022 Total")
+  ) %>%
+  relocate("Jan-June 2022 Total", .after = last_col()) %>%
+  rename(Site = `New Site`,
+         Department = DEPARTMENT_NAME) %>%
+  mutate(Data_Source = case_when(Data_Source %in% "Epic_Admin_Count" ~ 
+                                   "Epic Vaccines Administered",
+                                 Data_Source %in% "Sched_Repo_Count" ~ 
+                                 "Epic Schedule Repository")) %>%
+  arrange(Site, Department, Data_Source) %>%
+  pivot_longer(cols = contains("2022"),
+               names_to = "Month",
+               values_to = "Count") %>%
+  pivot_wider(names_from = c(Data_Source, Month),
+              names_sep = "_",
+              values_from = Count) %>%
+  adorn_totals(where = "row",
+               fill = "MSHS",
+               na.rm = TRUE) %>%
+  pivot_longer(cols = contains("2022"),
+               names_sep = "_",
+               names_to = c("Data_Source", "Month"),
+               values_to = "Count") %>%
+  pivot_wider(names_from = Month,
+              values_from = Count)
+  
+export_list <- list(MRN_VaxDate_Comparison = comparison_df,
+                    Total_Volume_Comparison = total_volume_monthly_comparison)
+
+write_xlsx(export_list,
            path = paste0(user_directory,
                          "/Epic Vaccines Administered Report",
                          "/Schedule and Admin Comparison Data ",
                          format(Sys.Date(), "%Y-%m-%d"),
                          ".xlsx"))
 
-# Summarize data from new Epic report and schedule repository
-epic_summary <- epic_df_validate %>%
-  group_by(`New Site`, ImmunizationDate) %>%
-  summarize(Epic_Admin_Count = n()) %>%
-  arrange(`New Site`, ImmunizationDate)
-
-sched_repo_summary <-sched_to_date_validate %>%
-  group_by(Site, ApptDate) %>%
-  summarize(Sched_Repo_Count = n()) %>%
-  arrange(Site, ApptDate)
-
-comparison_df <- full_join(epic_summary, sched_repo_summary,
-                           by = c("New Site" = "Site",
-                                  "ImmunizationDate" = "ApptDate"))
 
 # # Summarize data for dashboard visualizations
 # summary_all_doses <- sched_to_date %>%
