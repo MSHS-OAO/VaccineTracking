@@ -1,3 +1,6 @@
+# Script to summarize arrived COVID-19 vaccine appointments for 2020-2021
+
+# Clear environment and load libraries ---------------
 # Clear environment
 rm(list = ls())
 
@@ -23,6 +26,7 @@ library(purrr)
 library(janitor)
 library(DT)
 
+# Reference data -----------------------
 # Determine directory
 if ("Presidents" %in% list.files("J://")) {
   user_directory <- paste0("J:/Presidents/HSPI-PM/",
@@ -39,11 +43,6 @@ update_repo <- FALSE
 # Set path for file selection
 user_path <- paste0(user_directory, "\\*.*")
 
-# # Determine whether or not to update an existing repo
-# update_repo <- FALSE
-
-# Import static file for 
-
 # Import reference data for site and pod mappings
 dept_mappings <- read_excel(paste0(
   user_directory,
@@ -56,22 +55,6 @@ dept_mappings <- dept_mappings %>%
 # Store today's date
 today <- Sys.Date()
 
-# Site order
-all_sites <- c("MSB",
-               "MSBI",
-               "MSH",
-               "MSM",
-               "MSQ",
-               "MSW",
-               "MSVD",
-               "Network LI")
-
-# Vaccine types
-vax_types <- c("Adult (12yo+)", "Peds (5-11yo)")
-
-# Dept grouper
-dept_group <- c("Hospital POD", "MSHS Practice")
-
 # Import schedule repo --------------------------
 sched_repo_file <- paste0(user_directory,
                           "/R_Sched_AM_Repo",
@@ -79,6 +62,7 @@ sched_repo_file <- paste0(user_directory,
 
 sched_repo <- readRDS(sched_repo_file)
 
+# Process and format schedule repository for standard reporting ---------------
 sched_to_date <- sched_repo
 
 sched_to_date <- sched_to_date %>%
@@ -199,6 +183,7 @@ sched_repo_summary <- sched_to_date %>%
   rename(Date = ApptDate,
          Setting_Type = `Setting Grouper`)
 
+# Save standardized, static schedule repository as .RDS for use in future reporting --------------------------
 saveRDS(sched_repo_summary,
         paste0(user_directory,
                "/Hybrid Repo Sched & Admin Data",
