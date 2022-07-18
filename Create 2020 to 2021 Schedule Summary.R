@@ -38,11 +38,6 @@ if ("Presidents" %in% list.files("J://")) {
                            "System Operations/COVID Vaccine")
 }
 
-update_repo <- FALSE
-
-# Set path for file selection
-user_path <- paste0(user_directory, "\\*.*")
-
 # Import reference data for site and pod mappings
 dept_mappings <- read_excel(paste0(
   user_directory,
@@ -181,10 +176,13 @@ sched_repo_summary <- sched_to_date %>%
            VaxType, Dose, Mfg) %>%
   summarize(Count = n()) %>%
   rename(Date = ApptDate,
-         Setting_Type = `Setting Grouper`)
+         Setting = `Setting Grouper`) %>%
+  ungroup()
 
 # Save standardized, static schedule repository as .RDS for use in future reporting --------------------------
 saveRDS(sched_repo_summary,
         paste0(user_directory,
                "/Hybrid Repo Sched & Admin Data",
-               "/Sched Repo Summary 2020-2021 2022-07-18.RDS"))
+               "/Sched Repo Summary 2020-2021 ",
+               format(today),
+               ".RDS"))
