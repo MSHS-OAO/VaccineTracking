@@ -16,7 +16,7 @@ if ("Presidents" %in% list.files("J://")) {
                            "System Operations/COVID Vaccine")
 }
 
-update_repo <- FALSE
+update_repo <- TRUE
 
 # Render markdown file with dashboard code and save with today's date
 rmarkdown::render(here::here("MSH_Admin_Dose_Summary.Rmd"), 

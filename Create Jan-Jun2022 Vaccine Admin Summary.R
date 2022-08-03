@@ -39,10 +39,17 @@ if ("Presidents" %in% list.files("J://")) {
 }
 
 # Import reference data for site and pod mappings
-dept_mappings <- read_excel(paste0(
+dept_mappings_name <- read_excel(paste0(
   user_directory,
   "/Hybrid Repo Sched & Admin Data",
-  "/Vaccines Administered Dept Mappings 2022-07-18.xlsx"))
+  "/Vaccines Administered Dept Mappings 2022-08-02.xlsx"),
+  sheet = "Dept Mappings by Name")
+
+dept_mappings_epic_id <- read_excel(paste0(
+  user_directory,
+  "/Hybrid Repo Sched & Admin Data",
+  "/Vaccines Administered Dept Mappings 2022-08-02.xlsx"),
+  sheet = "Dept Mappings by Epic ID")
 
 # Store today's date
 today <- Sys.Date()
@@ -51,14 +58,24 @@ today <- Sys.Date()
 hist_vax_admin <- read_excel(paste0(
   user_directory,
   "/Epic Vaccines Administered Report",
-  "/Sample Report 2022-07-11.xls"
+  "/Version4-Jan-June2022.xls"
 ))
 
 vax_admin_to_date <- hist_vax_admin
 
+# Map on department name
 vax_admin_to_date <- left_join(vax_admin_to_date,
-                               dept_mappings,
+                               dept_mappings_name,
                                by = c("DEPARTMENT_NAME" = "Department"))
+
+# Map on Epic ID
+vax_admin_to_date <- left_join(vax_admin_to_date,
+                               dept_mappings_epic_id %>%
+                                 select(-Vaccine_Type),
+                               by = c("EPICDEPID" = "Epic_ID"))
+
+vax_admin_to_date <- vax_admin_to_date %>%
+  mutate(CompareSite = Site.x == Site.y)
 
 vax_admin_to_date <- vax_admin_to_date %>%
   select(-DOSE) %>%

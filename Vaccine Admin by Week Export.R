@@ -62,7 +62,7 @@ user_path <- paste0(user_directory, "\\*.*")
 dept_mappings <- read_excel(paste0(
   user_directory,
   "/Weekly Dashboard Doses Administered",
-  "/MSHS COVID-19 Vaccine Department Mappings 2022-04-11.xlsx"))
+  "/MSHS COVID-19 Vaccine Department Mappings 2022-07-28.xlsx"))
 
 dept_mappings <- dept_mappings %>%
   select(-`New Site`, -Notes) %>%
