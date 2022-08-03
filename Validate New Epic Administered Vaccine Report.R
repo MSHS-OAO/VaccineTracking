@@ -45,60 +45,65 @@ user_path <- paste0(user_directory, "\\*.*")
 # Import reference data for site and pod mappings
 dept_mappings <- read_excel(paste0(
   user_directory,
-  "/Weekly Dashboard Doses Administered",
-  "/MSHS COVID-19 Vaccine Department Mappings 2022-04-11.xlsx"))
+  "/Hybrid Repo Sched & Admin Data",
+  "/Hybrid Reporting Dept Mapping 2022-08-03.xlsx"),
+  sheet = "Hybrid Dept Mapping")
 
-dept_mappings <- dept_mappings %>%
-  select(-`Site (Historical)`, -Notes)
+sched_data_mappings <- dept_mappings %>%
+  select(-EpicID) %>%
+  unique()
+
+vax_admin_data_mappings <- dept_mappings %>%
+  select(-Department) %>%
+  unique()
 
 # Store today's date
 today <- Sys.Date()
 
-# Site order
-all_sites <- c("MSB",
-               "MSBI",
-               "MSH",
-               "MSM",
-               "MSQ",
-               "MSW",
-               "MSVD",
-               "Network LI")
 
 # Vaccine types
 vax_types <- c("Adult", "Peds")
 
 # Dept grouper
-dept_group <- c("Hospital POD", "MSHS Practice")
-
+dept_group <- c("Hospital POD",
+                "MSHS Practice",
+                "School Based Practice",
+                "MSHS Inpatient & ED")
 
 epic_df <- read_excel(path = paste0(user_directory,
                                     "/Epic Vaccines Administered Report",
-                                    "/Sample Report 2022-07-11.xls"))
+                                    "/Version4-Jan-June2022.xls"))
 
-epic_df <- epic_df %>%
-  mutate(Existing_Dept = DEPARTMENT_NAME %in% dept_mappings$Department,
-         ImmunizationDate = as.Date(
-           str_extract(IMMUNE_DATE,
-                       "[0-9]{2}\\-[A-Z]{3}\\-[0-9]{4}"),
-           format = "%d-%b-%Y"))
-
-missing_depts <- epic_df %>%
-  filter(!Existing_Dept) %>%
-  select(DEPARTMENT_NAME) %>%
-  distinct()
+# epic_df <- epic_df %>%
+#   mutate(Existing_Dept = DEPARTMENT_NAME %in% dept_mappings$Department,
+#          ImmunizationDate = as.Date(
+#            str_extract(IMMUNE_DATE,
+#                        "[0-9]{2}\\-[A-Z]{3}\\-[0-9]{4}"),
+#            format = "%d-%b-%Y"))
+# 
+# missing_depts <- epic_df %>%
+#   filter(!Existing_Dept) %>%
+#   select(DEPARTMENT_NAME) %>%
+#   distinct()
 
 epic_df <- left_join(epic_df,
-                     dept_mappings,
-                     by = c("DEPARTMENT_NAME" = "Department"))
+                     vax_admin_data_mappings,
+                     by = c("EPICDEPID" = "EpicID"))
 
-epic_df_summary <- epic_df %>%
-  group_by(Existing_Dept, `New Site`, DEPARTMENT_NAME, ImmunizationDate) %>%
-  summarize(Count = n())
+epic_df <- epic_df %>%
+  mutate(ImmunizationDate = as.Date(
+    str_extract(IMMUNE_DATE,
+                "[0-9]{2}\\-[A-Za-z]{3}\\-[0-9]{4}"),
+    format = "%d-%b-%Y"))
 
-existing_sites_summary <- epic_df_summary %>%
-  filter(Existing_Dept) %>%
-  group_by(`New Site`) %>%
-  summarize(Count = sum(Count, na.rm = TRUE))
+# epic_df_summary <- epic_df %>%
+#   group_by(Existing_Dept, `New Site`, DEPARTMENT_NAME, ImmunizationDate) %>%
+#   summarize(Count = n())
+# 
+# existing_sites_summary <- epic_df_summary %>%
+#   filter(Existing_Dept) %>%
+#   group_by(`New Site`) %>%
+#   summarize(Count = sum(Count, na.rm = TRUE))
 
 # Import schedule repo --------------------------
 sched_repo_file <- choose.files(default = paste0(user_directory,
@@ -166,7 +171,7 @@ sched_to_date <- sched_to_date %>%
   )
 
 # Crosswalk sites and department grouper
-sched_to_date <- left_join(sched_to_date, dept_mappings,
+sched_to_date <- left_join(sched_to_date, sched_data_mappings,
                            by = c("Department" = "Department"))
 
 sched_to_date <- sched_to_date %>%
@@ -247,22 +252,48 @@ validate_start_date <- max(epic_df_min_date, sched_repo_min_date)
 validate_end_date <- min(epic_df_max_date, sched_repo_max_date)
 
 # Filter data frames for relevant dates
-epic_df_validate <- epic_df %>%
-  filter(Existing_Dept &
-           ImmunizationDate >= validate_start_date &
-           ImmunizationDate <= validate_end_date) %>%
-  mutate(MRN_VaxDate = paste(MRN, ImmunizationDate))
-
 sched_to_date_validate <- sched_to_date %>%
   filter(Status2 %in% "Arr" &
            ApptDate >= validate_start_date &
-           ApptDate <= validate_end_date) %>%
-  mutate(MRN_VaxDate = paste(MRN, ApptDate),
-         MRN_VaxDate_Epic = MRN_VaxDate %in% epic_df_validate$MRN_VaxDate)
+           ApptDate <= validate_end_date)
+
+epic_df_validate <- epic_df %>%
+  filter(ImmunizationDate >= validate_start_date &
+           ImmunizationDate <= validate_end_date)
+
+sched_data_depts <- unique(sched_to_date_validate$Department)
 
 epic_df_validate <- epic_df_validate %>%
-  mutate(MRN_VaxDate_Sched = MRN_VaxDate %in% sched_to_date_validate$MRN_VaxDate,
-         Month = floor_date(ImmunizationDate, "months"))
+  mutate(Dept_in_Sched = DEPARTMENT_NAME %in% sched_data_depts,
+         Month = floor_date(ImmunizationDate, "months")) %>%
+  rename(Site = `New Site`)
+
+sched_to_date_validate <- sched_to_date_validate %>%
+  mutate(Month = floor_date(Date, "months"))
+
+# Summarize vaccines from schedule data and immunization data only for departments that are in both datasets
+epic_summary_common_dept <- epic_df_validate %>%
+  filter(Dept_in_Sched) %>%
+  group_by(Site, `Setting Grouper`, Month) %>%
+  summarize(Count = n()) %>%
+  mutate(Source = "Epic Immunization Admin")
+
+sched_summary_common_dept <- sched_to_date_validate %>%
+  group_by(Site, `Setting Grouper`, Month) %>%
+  summarize(Count = n()) %>%
+  mutate(Source = "Epic Schedule Data")
+
+compare_volume_common_dept <- rbind(epic_summary_common_dept,
+                                    sched_summary_common_dept)
+
+compare_volume_common_dept <- compare_volume_common_dept %>%
+  arrange(Month, Site, `Setting Grouper`) %>%
+  pivot_wider(names_from = Month,
+              values_from = Count)
+
+# NEXT STEPS: Compare MRN and Vaccination Date for common dates and departments
+# Compare volume for common dates and all departments
+
 
 comparison_df <- sched_to_date_validate %>%
   group_by(Site) %>%
