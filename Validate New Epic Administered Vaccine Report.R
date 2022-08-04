@@ -94,7 +94,9 @@ epic_df <- epic_df %>%
   mutate(ImmunizationDate = as.Date(
     str_extract(IMMUNE_DATE,
                 "[0-9]{2}\\-[A-Za-z]{3}\\-[0-9]{4}"),
-    format = "%d-%b-%Y"))
+    format = "%d-%b-%Y"),
+    `Setting Grouper` = ifelse(`Setting Grouper` %in% "School Based Practice",
+                               "MSHS Practice", `Setting Grouper`))
 
 # epic_df_summary <- epic_df %>%
 #   group_by(Existing_Dept, `New Site`, DEPARTMENT_NAME, ImmunizationDate) %>%
@@ -255,76 +257,107 @@ validate_end_date <- min(epic_df_max_date, sched_repo_max_date)
 sched_to_date_validate <- sched_to_date %>%
   filter(Status2 %in% "Arr" &
            ApptDate >= validate_start_date &
-           ApptDate <= validate_end_date)
+           ApptDate <= validate_end_date &
+           !is.na(`Setting Grouper`))
 
 epic_df_validate <- epic_df %>%
   filter(ImmunizationDate >= validate_start_date &
-           ImmunizationDate <= validate_end_date)
+           ImmunizationDate <= validate_end_date &
+           !is.na(`Setting Grouper`))
 
+# Identify departments present in schedule data
 sched_data_depts <- unique(sched_to_date_validate$Department)
 
+# Determine if department in immunization report is present in schedule data
+# Create a column combining MRN and vaccine date to crosswalk with schedule data
 epic_df_validate <- epic_df_validate %>%
   mutate(Dept_in_Sched = DEPARTMENT_NAME %in% sched_data_depts,
-         Month = floor_date(ImmunizationDate, "months")) %>%
+         Month = floor_date(ImmunizationDate, "months"),
+         MRN_VaxDate = paste(MRN, ImmunizationDate)) %>%
   rename(Site = `New Site`)
 
 sched_to_date_validate <- sched_to_date_validate %>%
-  mutate(Month = floor_date(Date, "months"))
+  mutate(Month = floor_date(Date, "months"),
+         MRN_VaxDate = paste(MRN, ApptDate),
+         MRN_VaxDate_Match = MRN_VaxDate %in% epic_df_validate$MRN_VaxDate)
 
-# Summarize vaccines from schedule data and immunization data only for departments that are in both datasets
-epic_summary_common_dept <- epic_df_validate %>%
+# Summarize vaccines volume from schedule data and immunization data only for departments that are in both datasets
+epic_volume_common_dept <- epic_df_validate %>%
   filter(Dept_in_Sched) %>%
-  group_by(Site, `Setting Grouper`, Month) %>%
+  group_by(Site, `Setting Grouper`) %>%
   summarize(Count = n()) %>%
   mutate(Source = "Epic Immunization Admin")
 
-sched_summary_common_dept <- sched_to_date_validate %>%
-  group_by(Site, `Setting Grouper`, Month) %>%
+sched_volume_common_dept <- sched_to_date_validate %>%
+  group_by(Site, `Setting Grouper`) %>%
   summarize(Count = n()) %>%
   mutate(Source = "Epic Schedule Data")
 
-compare_volume_common_dept <- rbind(epic_summary_common_dept,
-                                    sched_summary_common_dept)
+compare_volume_common_dept <- rbind(epic_volume_common_dept,
+                                    sched_volume_common_dept)
 
-compare_volume_common_dept <- compare_volume_common_dept %>%
-  arrange(Month, Site, `Setting Grouper`) %>%
-  pivot_wider(names_from = Month,
-              values_from = Count)
+volume_percent_common_dept <- compare_volume_common_dept %>%
+  pivot_wider(names_from = Source,
+              values_from = Count) %>%
+  mutate(VolumePercent = `Epic Immunization Admin` / `Epic Schedule Data`)
+
+# compare_volume_common_dept <- compare_volume_common_dept %>%
+#   arrange(Month, Site, `Setting Grouper`) %>%
+#   pivot_wider(names_from = Month,
+#               values_from = Count)
 
 # NEXT STEPS: Compare MRN and Vaccination Date for common dates and departments
 # Compare volume for common dates and all departments
-
-
-comparison_df <- sched_to_date_validate %>%
-  group_by(Site) %>%
-  summarize(Total_Arrived = n(),
-            Matched_In_Epic = sum(MRN_VaxDate_Epic)) %>%
+sched_mrn_vax_match_summary <- sched_to_date_validate %>%
+  group_by(Site, `Setting Grouper`) %>%
+  summarize(Total = n(),
+            Matched = sum(MRN_VaxDate_Match, na.rm = TRUE)) %>%
   adorn_totals(where = "row",
                name = "MSHS") %>%
-  mutate(PercentMatch = (Matched_In_Epic / Total_Arrived))
+  mutate(PercentMatched = percent(Matched / Total))
 
 # Summarize data from new Epic report and schedule repository
-epic_summary <- epic_df %>%
-  filter(ImmunizationDate >= validate_start_date &
-           ImmunizationDate <= validate_end_date) %>%
-  mutate(Month = floor_date(ImmunizationDate, "months")) %>%
-  group_by(`New Site`, DEPARTMENT_NAME, Month) %>%
-  summarize(Epic_Admin_Count = n()) %>%
-  arrange(`New Site`, DEPARTMENT_NAME, Month)
+epic_monthly_volume <- epic_df_validate %>%
+  group_by(`Setting Grouper`, Site, DEPARTMENT_NAME, Month) %>%
+  summarize(Immun_Admin_Volume = n()) %>%
+  rename(Department = DEPARTMENT_NAME) %>%
+  arrange(Month, `Setting Grouper`, Site, Department)
 
-sched_repo_summary <-sched_to_date %>%
-  filter(Status2 %in% "Arr" &
-           ApptDate >= validate_start_date &
-           ApptDate <= validate_end_date) %>%
-  mutate(Month = floor_date(ApptDate, "months")) %>%
-  group_by(Site, Department, Month) %>%
-  summarize(Sched_Repo_Count = n()) %>%
-  arrange(Site, Department, Month)
+sched_repo_monthly_volume <- sched_to_date_validate %>%
+  group_by(`Setting Grouper`, Site, Department, Month) %>%
+  summarize(Sched_Repo_Volume = n()) %>%
+  arrange(Month, `Setting Grouper`, Site, Department)
 
-total_volume_compare <- full_join(epic_summary, sched_repo_summary,
-                           by = c("New Site" = "Site",
-                                  "DEPARTMENT_NAME" = "Department",
+total_volume_compare <- full_join(epic_monthly_volume,
+                                  sched_repo_monthly_volume,
+                           by = c("Setting Grouper" = "Setting Grouper",
+                                  "Site" = "Site",
+                                  "Department" = "Department",
                                   "Month" = "Month"))
+
+dept_level_volume_compare <- total_volume_compare %>%
+  arrange(`Setting Grouper`, Site, Department, Month) %>%
+  pivot_longer(cols = contains("_Volume"),
+               names_to = "Source",
+               values_to = "Volume") %>%
+  pivot_wider(names_from = Month,
+              values_from = Volume) %>%
+  adorn_totals(where = "col",
+               na.rm = TRUE,
+               name = "Jan_Jun22_Total")
+
+site_level_volume_compare <- total_volume_compare %>%
+  pivot_longer(cols = contains("_Volume"),
+               names_to = "Source",
+               values_to = "Volume") %>%
+  group_by(`Setting Grouper`, Site, Month, Source) %>%
+  summarize(Volume = sum(Volume, na.rm = TRUE)) %>%
+  arrange(`Setting Grouper`, Site, Month) %>%
+    pivot_wider(names_from = Month,
+              values_from = Volume) %>%
+  adorn_totals(where = "col",
+               na.rm = TRUE,
+               name = "Jan_Jun22_Total")
 
 
 # test_list <- map_df(
