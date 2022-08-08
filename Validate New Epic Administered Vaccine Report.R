@@ -383,43 +383,44 @@ site_level_volume_compare <- total_volume_compare %>%
 #   pivot_wider(names_from = Data_Source,
 #               values_from = value)
 
-total_volume_monthly_comparison <- map_df(
-  total_volume_compare %>%
-    split(., .$DEPARTMENT_NAME),
-  .f = ~ pivot_longer(., cols = c("Epic_Admin_Count", "Sched_Repo_Count"),
-                      names_to = "Data_Source",
-                      values_to = "Count") %>%
-    pivot_wider(names_from = c(Month),
-                values_from = Count) %>%
-    adorn_totals(where = "col",
-                 name = "Jan-June 2022 Total")
-  ) %>%
-  relocate("Jan-June 2022 Total", .after = last_col()) %>%
-  rename(Site = `New Site`,
-         Department = DEPARTMENT_NAME) %>%
-  mutate(Data_Source = case_when(Data_Source %in% "Epic_Admin_Count" ~ 
-                                   "Epic Vaccines Administered",
-                                 Data_Source %in% "Sched_Repo_Count" ~ 
-                                 "Epic Schedule Repository")) %>%
-  arrange(Site, Department, Data_Source) %>%
-  pivot_longer(cols = contains("2022"),
-               names_to = "Month",
-               values_to = "Count") %>%
-  pivot_wider(names_from = c(Data_Source, Month),
-              names_sep = "_",
-              values_from = Count) %>%
-  adorn_totals(where = "row",
-               fill = "MSHS",
-               na.rm = TRUE) %>%
-  pivot_longer(cols = contains("2022"),
-               names_sep = "_",
-               names_to = c("Data_Source", "Month"),
-               values_to = "Count") %>%
-  pivot_wider(names_from = Month,
-              values_from = Count)
-  
-export_list <- list(MRN_VaxDate_Comparison = comparison_df,
-                    Total_Volume_Comparison = total_volume_monthly_comparison)
+# total_volume_monthly_comparison <- map_df(
+#   total_volume_compare %>%
+#     split(., .$DEPARTMENT_NAME),
+#   .f = ~ pivot_longer(., cols = c("Epic_Admin_Count", "Sched_Repo_Count"),
+#                       names_to = "Data_Source",
+#                       values_to = "Count") %>%
+#     pivot_wider(names_from = c(Month),
+#                 values_from = Count) %>%
+#     adorn_totals(where = "col",
+#                  name = "Jan-June 2022 Total")
+#   ) %>%
+#   relocate("Jan-June 2022 Total", .after = last_col()) %>%
+#   rename(Site = `New Site`,
+#          Department = DEPARTMENT_NAME) %>%
+#   mutate(Data_Source = case_when(Data_Source %in% "Epic_Admin_Count" ~ 
+#                                    "Epic Vaccines Administered",
+#                                  Data_Source %in% "Sched_Repo_Count" ~ 
+#                                  "Epic Schedule Repository")) %>%
+#   arrange(Site, Department, Data_Source) %>%
+#   pivot_longer(cols = contains("2022"),
+#                names_to = "Month",
+#                values_to = "Count") %>%
+#   pivot_wider(names_from = c(Data_Source, Month),
+#               names_sep = "_",
+#               values_from = Count) %>%
+#   adorn_totals(where = "row",
+#                fill = "MSHS",
+#                na.rm = TRUE) %>%
+#   pivot_longer(cols = contains("2022"),
+#                names_sep = "_",
+#                names_to = c("Data_Source", "Month"),
+#                values_to = "Count") %>%
+#   pivot_wider(names_from = Month,
+#               values_from = Count)
+#   
+export_list <- list(MRN_VaxDate_Comparison = sched_mrn_vax_match_summary,
+                    Dept_Volume_Compare = dept_level_volume_compare,
+                    Site_Volume_Compare = site_level_volume_compare)
 
 write_xlsx(export_list,
            path = paste0(user_directory,
