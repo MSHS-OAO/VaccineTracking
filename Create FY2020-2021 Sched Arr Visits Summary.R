@@ -68,7 +68,7 @@ sched_to_date <- sched_to_date %>%
     Dose = ifelse(str_detect(Type, "DOSE 1"), "Dose 1",
                   ifelse(str_detect(Type, "DOSE 2"), "Dose 2",
                          ifelse(str_detect(Type, "(DOSE 3)|(BOOSTER)"),
-                                "Dose 3/Boosters", NA))),
+                                "Dose 3/Booster", NA))),
     # Determine appointment date, year, month, etc.
     ApptDate = date(Date),
     ApptYear = year(Date),
