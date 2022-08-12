@@ -39,17 +39,15 @@ if ("Presidents" %in% list.files("J://")) {
 }
 
 # Import reference data for site and pod mappings
-dept_mappings_name <- read_excel(paste0(
+dept_mappings <- read_excel(paste0(
   user_directory,
   "/Hybrid Repo Sched & Admin Data",
-  "/Vaccines Administered Dept Mappings 2022-08-02.xlsx"),
-  sheet = "Dept Mappings by Name")
+  "/Hybrid Reporting Dept Mapping 2022-08-08.xlsx"),
+  sheet = "Hybrid Dept Mapping")
 
-dept_mappings_epic_id <- read_excel(paste0(
-  user_directory,
-  "/Hybrid Repo Sched & Admin Data",
-  "/Vaccines Administered Dept Mappings 2022-08-02.xlsx"),
-  sheet = "Dept Mappings by Epic ID")
+vax_admin_data_mappings <- dept_mappings %>%
+  select(-Department) %>%
+  unique()
 
 # Store today's date
 today <- Sys.Date()
@@ -61,21 +59,12 @@ hist_vax_admin <- read_excel(paste0(
   "/Version4-Jan-June2022.xls"
 ))
 
-vax_admin_to_date <- hist_vax_admin
-
-# Map on department name
-vax_admin_to_date <- left_join(vax_admin_to_date,
-                               dept_mappings_name,
-                               by = c("DEPARTMENT_NAME" = "Department"))
+vax_admin_to_date <- unique(hist_vax_admin)
 
 # Map on Epic ID
 vax_admin_to_date <- left_join(vax_admin_to_date,
-                               dept_mappings_epic_id %>%
-                                 select(-Vaccine_Type),
-                               by = c("EPICDEPID" = "Epic_ID"))
-
-vax_admin_to_date <- vax_admin_to_date %>%
-  mutate(CompareSite = Site.x == Site.y)
+                               vax_admin_data_mappings,
+                               by = c("EPICDEPID" = "EpicID"))
 
 vax_admin_to_date <- vax_admin_to_date %>%
   select(-DOSE) %>%
@@ -89,7 +78,14 @@ vax_admin_to_date <- vax_admin_to_date %>%
                                             "(\\(6 MONTHS - 4 YEARS\\))"),
                                  "Peds (6 mo - 4 yo)", 
                           "Adult (12 yo +)")),
-         Dose = "Dose 1", # Fix this later
+         Dose = ifelse(str_detect(replace_na(PRC_NAME, ""), "DOSE 1"),
+                       "Dose 1",
+                       ifelse(str_detect(replace_na(PRC_NAME, ""),
+                                         "DOSE 2"), "Dose 2",
+                              ifelse(str_detect(replace_na(PRC_NAME, ""),
+                                                "(DOSE 3)|(BOOSTER)"),
+                                     "Dose 3/Booster", "Dose 3/Booster"
+                              ))),
          Date = as.Date(str_extract(IMMUNE_DATE,
                                     "[0-9]{2}\\-[A-Za-z]{3}\\-[0-9]{4}"),
                         format = "%d-%b-%Y")
@@ -97,14 +93,26 @@ vax_admin_to_date <- vax_admin_to_date %>%
   rename(Department = DEPARTMENT_NAME)
 
 vax_admin_repo_summary <- vax_admin_to_date %>%
-  group_by(Date, Department, Setting, Site, VaxType, Dose, Mfg) %>%
+  filter(!is.na(Department)) %>%
+  group_by(Date, Department, `Setting Grouper`, 
+           Site, `Hospital Roll Up`, 
+           VaxType, Dose, Mfg) %>%
   summarize(Count = n()) %>%
   ungroup()
 
-# Save standardized, static vaccines administered repository as .RDS for use in future reporting ----------
 saveRDS(vax_admin_repo_summary,
         paste0(user_directory,
                "/Hybrid Repo Sched & Admin Data",
-               "/Vaccines Admin Summary Jan-Jun2022 ",
-               format(today),
-               ".RDS"))
+               "/Admin Immune Jan-Jun2022 Daily Summary ",
+               format(today, "%Y-%m-%d"),
+               ".rds"))
+
+
+
+# # Save standardized, static vaccines administered repository as .RDS for use in future reporting ----------
+# saveRDS(vax_admin_repo_summary,
+#         paste0(user_directory,
+#                "/Hybrid Repo Sched & Admin Data",
+#                "/Vaccines Admin Summary Jan-Jun2022 ",
+#                format(today),
+#                ".RDS"))

@@ -51,15 +51,6 @@ sched_data_mappings <- dept_mappings %>%
 # Store today's date
 today <- Sys.Date()
 
-# Vaccine types
-vax_types <- c("Adult", "Peds")
-
-# Dept grouper
-dept_group <- c("Hospital POD",
-                "MSHS Practice",
-                "School Based Practice",
-                "MSHS Inpatient & ED")
-
 # Import schedule repo --------------------------
 sched_repo_file <- choose.files(default = paste0(user_directory,
                                                  "/R_Sched_AM_Repo/*.*"))
@@ -142,13 +133,13 @@ sched_to_date <- sched_to_date %>%
         (`Vaccine Age Group` %in% "Both" &
            `Setting Grouper` %in% c("School Based Practice", "MSHS Practice") &
            Age_Numeric < 12),
-      "Peds", "Adult"),
+      "Peds (5-11 yo)", "Adult (12 yo +)"),
     # Determine manufacturer based on immunization field and vaccine type fields
     Mfg = #Keep manufacturer as NA if the appointment hasn't been arrived
       ifelse(Status2 != "Arr", NA,
              # Any blank immunizations and any peds assumed to be Pfizer
              ifelse(is.na(Immunizations) |
-                      VaxType %in% c("Peds"), "Pfizer",
+                      VaxType %in% c("Peds (5-11 yo)"), "Pfizer",
                     # Any immunizations with Moderna in text classified as Moderna
                     ifelse(str_detect(Immunizations, "Moderna"), "Moderna",
                            # Any visiting docs or Johnson and Johnson
@@ -172,10 +163,28 @@ sched_to_date <- sched_to_date %>%
     `Setting Grouper` = ifelse(`Setting Grouper` %in% "School Based Practice",
                                "MSHS Practice", `Setting Grouper`))
 
+sched_arr_visits_daily_summary <- sched_to_date %>%
+  group_by(ApptDate, Department, `Setting Grouper`,
+           Site, `Hospital Roll Up`,
+           VaxType, Dose, Mfg) %>%
+  summarize(Count = n()) %>%
+  ungroup() %>%
+  rename(Date = ApptDate)
+
 # Save 2020 and 2021 data as it's own RDS for future reporting
+# Save patient level data
 saveRDS(sched_to_date,
         file = paste0(user_directory,
                       "/Hybrid Repo Sched & Admin Data",
                       "/Sched Arr Visits 2020-2021 Summary ",
                       format(today, "%Y-%m-%d"),
                       ".rds"))
+
+# Save daily summary of arrived visits
+saveRDS(sched_arr_visits_daily_summary,
+        file = paste0(user_directory,
+                      "/Hybrid Repo Sched & Admin Data",
+                      "/Sched Arr Visits 2020-2021 Daily Summary ",
+                      format(today, "%Y-%m-%d"),
+                      ".rds"))
+
