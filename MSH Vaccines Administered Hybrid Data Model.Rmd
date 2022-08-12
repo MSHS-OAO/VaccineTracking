@@ -394,7 +394,7 @@ setting_kable(setting = "MSHS Inpatient & ED",
 
 ```
 
-### Reference
+### Data Sources & Reference
 
 **Data Sources**
 
