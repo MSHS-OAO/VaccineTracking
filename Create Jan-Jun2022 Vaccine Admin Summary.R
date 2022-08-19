@@ -56,7 +56,7 @@ today <- Sys.Date()
 hist_vax_admin <- read_excel(paste0(
   user_directory,
   "/Epic Vaccines Administered Report",
-  "/Version4-Jan-June2022.xls"
+  "/COVID-8.19.2022.xls"
 ))
 
 vax_admin_to_date <- unique(hist_vax_admin)
@@ -84,8 +84,16 @@ vax_admin_to_date <- vax_admin_to_date %>%
                                          "DOSE 2"), "Dose 2",
                               ifelse(str_detect(replace_na(PRC_NAME, ""),
                                                 "(DOSE 3)|(BOOSTER)"),
-                                     "Dose 3/Booster", "Dose 3/Booster"
-                              ))),
+                                     "Dose 3/Booster",
+                                     ifelse(str_detect(RESPONSE_LIST,
+                                                       "First Dose"),
+                                            "Dose 1",
+                                            ifelse(str_detect(RESPONSE_LIST,
+                                                              "Second Dose"),
+                                                   "Dose 2",
+                                                   ifelse(str_detect(RESPONSE_LIST,
+                                                                     "(Third Dose) | (Booster Dose)"),
+                                                          "Dose 3/Booster", "Dose 3/Booster")))))),
          Date = as.Date(str_extract(IMMUNE_DATE,
                                     "[0-9]{2}\\-[A-Za-z]{3}\\-[0-9]{4}"),
                         format = "%d-%b-%Y")
