@@ -46,7 +46,7 @@ user_path <- paste0(user_directory, "\\*.*")
 dept_mappings <- read_excel(paste0(
   user_directory,
   "/Hybrid Repo Sched & Admin Data",
-  "/Hybrid Reporting Dept Mapping 2022-08-03.xlsx"),
+  "/Hybrid Reporting Dept Mapping 2022-08-08.xlsx"),
   sheet = "Hybrid Dept Mapping")
 
 sched_data_mappings <- dept_mappings %>%
@@ -72,7 +72,7 @@ dept_group <- c("Hospital POD",
 
 epic_df <- read_excel(path = paste0(user_directory,
                                     "/Epic Vaccines Administered Report",
-                                    "/Version4-Jan-June2022.xls"))
+                                    "/COVID-8.19.2022.xls"))
 
 # epic_df <- epic_df %>%
 #   mutate(Existing_Dept = DEPARTMENT_NAME %in% dept_mappings$Department,
@@ -273,8 +273,8 @@ sched_data_depts <- unique(sched_to_date_validate$Department)
 epic_df_validate <- epic_df_validate %>%
   mutate(Dept_in_Sched = DEPARTMENT_NAME %in% sched_data_depts,
          Month = floor_date(ImmunizationDate, "months"),
-         MRN_VaxDate = paste(MRN, ImmunizationDate)) %>%
-  rename(Site = `New Site`)
+         MRN_VaxDate = paste(MRN, ImmunizationDate)) #%>%
+  # rename(Site = `New Site`)
 
 sched_to_date_validate <- sched_to_date_validate %>%
   mutate(Month = floor_date(Date, "months"),

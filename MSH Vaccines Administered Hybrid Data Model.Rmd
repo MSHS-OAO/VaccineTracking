@@ -114,7 +114,7 @@ sched_repo_summary <- readRDS(
 vax_admin_repo_summary <- readRDS(
   paste0(user_directory,
          "/Hybrid Repo Sched & Admin Data",
-         "/Admin Immune Jan-Jun2022 Daily Summary 2022-08-12.RDS"))
+         "/Admin Immune Jan-Jun2022 Daily Summary 2022-08-19.RDS"))
 
 hybrid_repo <- rbind(sched_repo_summary,
                      vax_admin_repo_summary)
@@ -317,7 +317,7 @@ setting_kable <- function(setting, vax_type) {
     
     subset_data <- subset_data %>%
       group_by(Site, Dose) %>%
-      summarize(Count = n()) %>%
+      summarize(Count = sum(Count, na.rm = TRUE)) %>%
       pivot_wider(names_from = Dose,
                   # names_prefix = "Dose ",
                   values_from = Count) %>%
@@ -408,7 +408,9 @@ Based on vaccines administered across health system using completed immunization
 
 *   Immunizations with no associated Department/Epic ID excluded from analysis.
 *   Vaccine type (Adult (12 yo +), Peds (5 - 11 yo), Peds (6 mo - 4 yo)) based on Immunization Name in Epic.
-*   Vaccine dose based on Procedure Name field in Epic. Immunizations with ambiguous visit types are categorized as Dose 3/Booster.
+*   Vaccine dose based on the following logic:
+    1. PRC_NAME field in Epic for clearly defined visits.
+    2. RESPONSE_LIST field completed during vaccination noting the dose in the series for ambiguously defined visits (ie, well visits, follow ups, etc.)
 
 
 ***
