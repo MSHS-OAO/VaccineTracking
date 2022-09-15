@@ -134,17 +134,17 @@ vax_admin_repo_summary <- vax_admin_to_date %>%
 start_date <- format(min(vax_admin_repo_summary$Date), "%m%d%Y")
 end_date <- format(max(vax_admin_repo_summary$Date), "%m%d%Y")
 
-saveRDS(vax_admin_repo_summary,
-        paste0(user_directory,
-               "/Hybrid Repo Sched & Admin Data",
-               "/Vaccine Administration Daily Summary ",
-               start_date,
-               " to ",
-               end_date,
-               " as of ",
-               format(today, "%Y-%m-%d"),
-               ".rds"))
-
+# saveRDS(vax_admin_repo_summary,
+#         paste0(user_directory,
+#                "/Hybrid Repo Sched & Admin Data",
+#                "/Vaccine Administration Daily Summary ",
+#                start_date,
+#                " to ",
+#                end_date,
+#                " as of ",
+#                format(today, "%Y-%m-%d"),
+#                ".rds"))
+# 
 
 
 # # Save standardized, static vaccines administered repository as .RDS for use in future reporting ----------

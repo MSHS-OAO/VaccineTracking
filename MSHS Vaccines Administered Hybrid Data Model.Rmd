@@ -68,15 +68,12 @@ if ("Presidents" %in% list.files("J://")) {
 # Set path for file selection
 user_path <- paste0(user_directory, "\\*.*")
 
-# Determine whether or not to update an existing repo
-update_repo <- FALSE
-
 # Import reference data for site and pod mappings
 # Import reference data for site and pod mappings
 dept_mappings <- read_excel(paste0(
   user_directory,
   "/Hybrid Repo Sched & Admin Data",
-  "/Hybrid Reporting Dept Mapping 2022-08-08.xlsx"),
+  "/Hybrid Reporting Dept Mapping 2022-09-13.xlsx"),
   sheet = "Hybrid Dept Mapping")
 
 vax_admin_data_mappings <- dept_mappings %>%
@@ -97,7 +94,7 @@ all_sites <- c("MSB",
                "Network")
 
 # Vaccine types
-vax_types <- c("Adult (12 yo +)", "Peds (5-11 yo)", "Peds (6 mo - 4 yo)")
+vax_types <- c("Adult (12yo+)", "Peds (5-11yo)", "Peds (Pfizer 6mo-4yo, Moderna 6mo-6yo)")
 
 # Dept grouper
 dept_group <- c("Hospital POD", "MSHS Practice", "MSHS Inpatient & ED")
@@ -108,143 +105,115 @@ dept_group <- c("Hospital POD", "MSHS Practice", "MSHS Inpatient & ED")
 sched_repo_summary <- readRDS(
   paste0(user_directory,
          "/Hybrid Repo Sched & Admin Data",
-         "/Sched Arr Visits 2020-2021 Daily Summary 2022-08-12.RDS"))
+         "/Sched Arr Visits 2020-2021 Daily Summary 2022-09-14.RDS"))
 
 # Import vaccine administration repository daily summary for Jan-Jun 2022
 vax_admin_repo_summary <- readRDS(
   paste0(user_directory,
          "/Hybrid Repo Sched & Admin Data",
-         "/Admin Immune Jan-Jun2022 Daily Summary 2022-08-19.RDS"))
+         "/Vaccine Administration Daily Summary 01012022 to 09102022 as of 2022-09-14.RDS"))
 
 hybrid_repo <- rbind(sched_repo_summary,
                      vax_admin_repo_summary)
 
-# # Needs to be updated once we start receiving weekly reports
-# if (update_repo) {
-# 
-#   # Determine date range of reports to add to repository
-#   if (sched_repo_update_date == today - 1) {
-#     new_report_dates <- today - 1
-#   } else {
-#     new_report_dates <- seq.Date(sched_repo_update_date, today - 1, by = 1)
-#   }
-# 
-#   new_report_dates_pattern <- format(new_report_dates, "%Y%m%d")
-# 
-#   # Find list of reports
-#   file_list_vacc_sched <- list.files(
-#     path = paste0(user_directory,
-#                   "/Epic Auto Report Sched All Status"),
-#     pattern = paste0("^(Covid_vaccine_all_status_ZipCode_)",
-#                      new_report_dates_pattern,
-#                      ".*.csv",
-#                      collapse = "|"))
-# 
-#   # Import reports and add a column with report name and report date
-#   import_new_reports <- map_df(
-#     file_list_vacc_sched,
-#     .f = function(x){
-#       sched_data <- read.csv(
-#         paste0(user_directory,
-#                "/Epic Auto Report Sched All Status/",
-#                x),
-#         stringsAsFactors = FALSE,
-#         check.names = FALSE) %>%
-#         mutate(Filename = x,
-#                ReportDate = as.Date(str_extract(x, "[0-9]{8}"),
-#                                     "%Y%m%d"),
-#                DOB = as.Date(DOB, format = "%m/%d/%Y"),
-#                `Made Date` = as.Date(`Made Date`, format = "%m/%d/%y"),
-#                Date = as.Date(Date, "%m/%d/%Y"),
-#                `Appt Time` = as.POSIXct(paste("1899-12-31 ", `Appt Time`),
-#                                         tz = "", format = "%Y-%m-%d %H:%M %p"),
-#                `ZIP Code` = substr(`ZIP Code`, 2, nchar(`ZIP Code`)),
-#                `PATIENTS LIFE NUMBER OR ORACLE NUMBER` = as.character(
-#                  `PATIENTS LIFE NUMBER OR ORACLE NUMBER`))
-#     }
-#   )
-# 
-#   # Filter schedule data from new reports to only keep appointments in latest reports
-#   sched_data_new_reports <- import_new_reports %>%
-#     group_by(Date) %>%
-#     slice_max(ReportDate) %>%
-#     mutate(Filename = NULL,
-#            ReportDate = NULL) %>%
-#     ungroup()
-# 
-#   new_reports_dates <- sort(unique(sched_data_new_reports$Date))
-# 
-#   # Remove vaccine appoints from any overlapping dates in repository and new reports
-#   sched_repo <- sched_repo %>%
-#     filter(!(Date >= new_reports_dates[1]))
-# 
-#   # Bind schedule repository and schedule from new reports
-#   sched_repo <- rbind(sched_repo, sched_data_new_reports)
-# 
-#   # Save new repository
-#   saveRDS(sched_repo, paste0(user_directory, "/R_Sched_AM_Repo/",
-#                              "Auto Epic Report Sched ",
-#                              format(min(sched_repo$Date), "%m%d%y"), " to ",
-#                              format(max(sched_repo$Date), "%m%d%y"),
-#                              " on ", format(Sys.time(), "%m%d%y %H%M"), ".rds"))
-# 
-# } else {
-# 
-# }
-```
+# Needs to be updated once we start receiving weekly reports
+if (update_repo) {
 
-```{r Format and process new immunization data}
-# new_immune_data <- unique(data)
-# 
-# new_immune_data <- left_join(new_immune_data,
-#                              vax_admin_data_mappings,
-#                              by = c("EPICDEPID" = "EpicID"))
-# 
-# # Add in logic to check for unmapped departments that need to be added to mapping file
-# # Note: This is different than immunizations without a department listed
-# 
-# new_immune_data <- new_immune_data %>%
-#   select(-DOSE) %>%
-#   mutate(Mfg = ifelse(str_detect(IMMUNE_NAME, "PFIZER"), "Pfizer",
-#                       ifelse(str_detect(IMMUNE_NAME, "MODERNA"), "Moderna",
-#                              ifelse(str_detect(IMMUNE_NAME, "JOHNSON"), "J&J",
-#                                     NA))),
-#          VaxType = ifelse(str_detect(IMMUNE_NAME, "(\\(5-11 YEARS)\\)"),
-#                           "Peds (5-11 yo)",
-#                           ifelse(str_detect(IMMUNE_NAME,
-#                                             "(\\(6 MONTHS - 4 YEARS\\))"),
-#                                  "Peds (6 mo - 4 yo)", 
-#                           "Adult (12 yo +)")),
-#          Dose = ifelse(str_detect(replace_na(PRC_NAME, ""), "DOSE 1"),
-#                        "Dose 1",
-#                        ifelse(str_detect(replace_na(PRC_NAME, ""),
-#                                          "DOSE 2"), "Dose 2",
-#                               ifelse(str_detect(replace_na(PRC_NAME, ""),
-#                                                 "(DOSE 3)|(BOOSTER)"),
-#                                      "Dose 3/Booster", "Dose 3/Booster"
-#                               ))),
-#          Date = as.Date(str_extract(IMMUNE_DATE,
-#                                     "[0-9]{2}\\-[A-Za-z]{3}\\-[0-9]{4}"),
-#                         format = "%d-%b-%Y")
-#          ) %>%
-#   rename(Department = DEPARTMENT_NAME)
-# 
-# new_immune_data_daily_summary <- new_immune_data %>%
-#   filter(!is.na(Department)) %>%
-#   group_by(Date, Department, `Setting Grouper`, 
-#            Site, `Hospital Roll Up`, 
-#            VaxType, Dose, Mfg) %>%
-#   summarize(Count = n()) %>%
-#   ungroup()
-# 
-# # Add to existing summary
-# hybrid_repo <- rbind(hybrid_repo,
-#                      new_immune_data_daily_summary)
+  # Select most recent weekly file
+  weekly_vax_admin <- choose.files(
+    default = 
+      paste0(user_directory,
+             "/Epic Vaccines Administered Report/*.*"))
+  
+  weekly_vax_admin <- read.csv(weekly_vax_admin)
+  
+  weekly_vax_admin <- unique(weekly_vax_admin)
+  
+  weekly_vax_admin <- left_join(weekly_vax_admin,
+                                vax_admin_data_mappings,
+                                by = c("EPICDEPID" = "EpicID"))
+  
+  unmapped_dept <- weekly_vax_admin %>%
+    select(DEPARTMENT_NAME, EPICDEPID, Site) %>%
+    distinct() %>%
+    filter(!is.na(DEPARTMENT_NAME) & is.na(Site))
+  
+  if(nrow(unmapped_dept) > 0) {
+    stop(paste0("Check department mappings. Missing departments include ",
+                paste(as.vector(unmapped_dept$DEPARTMENT_NAME), collapse = ", "),
+                "."))
+  }
+  
+  weekly_vax_admin <- weekly_vax_admin %>%
+    select(-DOSE) %>%
+    mutate(VaxType = ifelse(str_detect(IMMUNE_NAME, "(\\(5-11 YEARS)\\)"),
+                            "Peds (Pfizer 5-11yo)",
+                            ifelse(str_detect(IMMUNE_NAME,
+                                              "(\\(6 MONTHS - 4 YEARS\\))") |
+                                     str_detect(IMMUNE_NAME,
+                                                "COVID-19, MRNA, LNP-S, PF, PEDIATRIC 25 MCG/0.25 ML DOSE"),
+                                   "Peds (Pfizer 6mo-4yo, Moderna 6mo-6yo)", 
+                                   "Adult (12yo+)")),
+           Mfg = ifelse(str_detect(IMMUNE_NAME, "PFIZER"), "Pfizer",
+                        ifelse(str_detect(IMMUNE_NAME, "MODERNA") |
+                                 str_detect(
+                                   IMMUNE_NAME,
+                                   "COVID-19, MRNA, LNP-S, PF, PEDIATRIC 25 MCG/0.25 ML DOSE"),
+                               "Moderna",
+                               ifelse(str_detect(IMMUNE_NAME, "JOHNSON"), "J&J",
+                                      NA))),
+           Dose = ifelse(
+             str_detect(replace_na(PRC_NAME, ""), "DOSE 1"), "Dose 1",
+             ifelse(
+               str_detect(replace_na(PRC_NAME, ""), "DOSE 2"), "Dose 2",
+               ifelse(
+                 str_detect(replace_na(PRC_NAME, ""), "(DOSE 3)|(BOOSTER)"),
+                 "Dose 3/Booster",
+                 ifelse(
+                   str_detect(replace_na(RESPONSE_LIST, ""), "First Dose"),
+                   "Dose 1",
+                   ifelse(
+                     str_detect(replace_na(RESPONSE_LIST, ""), "Second Dose"),
+                     "Dose 2",
+                     ifelse(
+                       str_detect(replace_na(RESPONSE_LIST, ""),
+                                  "(Third Dose) | (Booster Dose)"),
+                       "Dose 3/Booster",
+                       ifelse(VaxType %in% "Peds (Pfizer 6mo-4yo, Moderna 6mo-6yo)",
+                              "Dose 1", "Dose 3/Booster"))))))),
+           Date = as.Date(str_extract(IMMUNE_DATE,
+                                      "[0-9]{2}\\-[A-Za-z]{3}\\-[0-9]{4}"),
+                          format = "%d-%b-%Y")
+           ) %>%
+    rename(Department = DEPARTMENT_NAME)
+  
+  weekly_admin_summary <- weekly_vax_admin %>%
+    filter(!is.na(Department)) %>%
+    group_by(Date, Department, `Setting Grouper`, 
+             Site, `Hospital Roll Up`, 
+             VaxType, Dose, Mfg) %>%  
+    summarize(Count = n()) %>%
+    ungroup()
+
+  # Bind hybrid repository repository and most recent week's vaccine administration data
+  hybrid_repo <- rbind(hybrid_repo, weekly_admin_summary)
+
+  # Save new repository
+  saveRDS(sched_repo, paste0(user_directory, "/Epic Vaccines Administered Report/",
+                             "Hybrid Vaccine Admin Data ",
+                             format(min(hybrid_repo$Date), "%m%d%y"), " to ",
+                             format(max(hybrid_repo$Date), "%m%d%y"),
+                             " on ", format(Sys.time(), "%m%d%y %H%M"), ".rds"))
+
+} else {
+
+}
 
 vax_admin_start_date <- min(hybrid_repo$Date)
 vax_admin_end_date <- max(hybrid_repo$Date)
 
 ```
+
 
 #### *Vaccines Administered from `r paste0(format(vax_admin_start_date, "%m/%d/%y"), "-", format(vax_admin_end_date, "%m/%d/%y"))`*
 
@@ -356,13 +325,13 @@ setting_kable <- function(setting, vax_type) {
 ```{r Create tables for hospital POD vaccine summary}
 
 setting_kable(setting = "Hospital POD",
-              vax_type = "Adult (12 yo +)")
+              vax_type = "Adult (12yo+)")
 
 setting_kable(setting = "Hospital POD",
-              vax_type = "Peds (5-11 yo)")
+              vax_type = "Peds (Pfizer 5-11yo)")
 
 setting_kable(setting = "Hospital POD",
-              vax_type = "Peds (6 mo - 4 yo)")
+              vax_type = "Peds (Pfizer 6mo-4yo, Moderna 6mo-6yo)")
 
 ```
 
@@ -370,13 +339,13 @@ setting_kable(setting = "Hospital POD",
 ```{r Create tables for MSHS practice vaccine summary}
 
 setting_kable(setting = "MSHS Practice",
-              vax_type = "Adult (12 yo +)")
+              vax_type = "Adult (12yo+)")
 
 setting_kable(setting = "MSHS Practice",
-              vax_type = "Peds (5-11 yo)")
+              vax_type = "Peds (Pfizer 5-11yo)")
 
 setting_kable(setting = "MSHS Practice",
-              vax_type = "Peds (6 mo - 4 yo)")
+              vax_type = "Peds (Pfizer 6mo-4yo, Moderna 6mo-6yo)")
 
 ```
 
@@ -384,13 +353,13 @@ setting_kable(setting = "MSHS Practice",
 ```{r Create tables for Inpatient and ED vaccine summary}
 
 setting_kable(setting = "MSHS Inpatient & ED",
-              vax_type = "Adult (12 yo +)")
+              vax_type = "Adult (12yo+)")
 
 setting_kable(setting = "MSHS Inpatient & ED",
-              vax_type = "Peds (5-11 yo)")
+              vax_type = "Peds (Pfizer 5-11yo)")
 
 setting_kable(setting = "MSHS Inpatient & ED",
-              vax_type = "Peds (6 mo - 4 yo)")
+              vax_type = "Peds (Pfizer 6mo-4yo, Moderna 6mo-6yo)")
 
 ```
 
@@ -407,10 +376,11 @@ Based on vaccines administered across health system using completed immunization
 *Epic Immunization Data Considerations:*
 
 *   Immunizations with no associated Department/Epic ID excluded from analysis.
-*   Vaccine type (Adult (12 yo +), Peds (5 - 11 yo), Peds (6 mo - 4 yo)) based on Immunization Name in Epic.
+*   Vaccine type (Adult (12yo+), Peds (5-11yo), Peds (Pfizer 6mo-4yo, Moderna 6mo-6yo)) based on Immunization Name in Epic.
 *   Vaccine dose based on the following logic:
     1. PRC_NAME field in Epic for clearly defined visits.
     2. RESPONSE_LIST field completed during vaccination noting the dose in the series for ambiguously defined visits (ie, well visits, follow ups, etc.)
+    3. If both of these are empty, the dose is assumed to be Dose 1 for Peds (Pfizer 6mo-4yo, Moderna 6mo-6yo) or Dose 3/Booster for Peds (5-11yo) and Adults (12+).
 
 
 ***

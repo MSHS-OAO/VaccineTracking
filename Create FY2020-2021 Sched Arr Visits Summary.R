@@ -133,13 +133,13 @@ sched_to_date <- sched_to_date %>%
         (`Vaccine Age Group` %in% "Both" &
            `Setting Grouper` %in% c("School Based Practice", "MSHS Practice") &
            Age_Numeric < 12),
-      "Peds (5-11 yo)", "Adult (12 yo +)"),
+      "Peds (Pfizer 5-11yo)", "Adult (12yo+)"),
     # Determine manufacturer based on immunization field and vaccine type fields
     Mfg = #Keep manufacturer as NA if the appointment hasn't been arrived
       ifelse(Status2 != "Arr", NA,
              # Any blank immunizations and any peds assumed to be Pfizer
              ifelse(is.na(Immunizations) |
-                      VaxType %in% c("Peds (5-11 yo)"), "Pfizer",
+                      VaxType %in% c("Peds (Pfizer 5-11yo)"), "Pfizer",
                     # Any immunizations with Moderna in text classified as Moderna
                     ifelse(str_detect(Immunizations, "Moderna"), "Moderna",
                            # Any visiting docs or Johnson and Johnson
@@ -173,12 +173,12 @@ sched_arr_visits_daily_summary <- sched_to_date %>%
 
 # Save 2020 and 2021 data as it's own RDS for future reporting
 # Save patient level data
-saveRDS(sched_to_date,
-        file = paste0(user_directory,
-                      "/Hybrid Repo Sched & Admin Data",
-                      "/Sched Arr Visits 2020-2021 Summary ",
-                      format(today, "%Y-%m-%d"),
-                      ".rds"))
+# saveRDS(sched_to_date,
+#         file = paste0(user_directory,
+#                       "/Hybrid Repo Sched & Admin Data",
+#                       "/Sched Arr Visits 2020-2021 Summary ",
+#                       format(today, "%Y-%m-%d"),
+#                       ".rds"))
 
 # Save daily summary of arrived visits
 saveRDS(sched_arr_visits_daily_summary,
