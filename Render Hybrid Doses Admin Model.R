@@ -16,7 +16,8 @@ if ("Presidents" %in% list.files("J://")) {
                            "System Operations/COVID Vaccine")
 }
 
-update_repo <- FALSE
+initial_run <- FALSE
+update_repo <- TRUE
 
 # Render markdown file with dashboard code and save with today's date
 rmarkdown::render(here::here("MSHS Vaccines Administered Hybrid Data Model.Rmd"), 
