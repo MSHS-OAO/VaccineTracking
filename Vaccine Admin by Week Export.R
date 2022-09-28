@@ -61,13 +61,13 @@ user_path <- paste0(user_directory, "\\*.*")
 # Import reference data for site and pod mappings
 dept_mappings <- read_excel(paste0(
   user_directory,
-  "/Weekly Dashboard Doses Administered",
-  "/MSHS COVID-19 Vaccine Department Mappings 2022-08-25.xlsx"))
+  "/Hybrid Repo Sched & Admin Data",
+  "/Hybrid Reporting Dept Mapping 2022-09-27.xlsx"),
+  sheet = "Hybrid Dept Mapping")
 
-dept_mappings <- dept_mappings %>%
-  select(-`New Site`, -Notes) %>%
-  rename(Site = `Site (Historical)`)
-
+vax_admin_data_mappings <- dept_mappings %>%
+  select(-Department) %>%
+  unique()
 
 # Store today's date
 today <- Sys.Date()
@@ -153,22 +153,26 @@ all_dates <- all_dates %>%
   arrange(VaxType, Date)
 
 
-# Import Epic schedule repository
-sched_repo <- readRDS(
-  choose.files(default = paste0(user_directory,
-                                  "/R_Sched_AM_Repo/*.*"),
-                 caption = "Select this morning's schedule repository"))
+# Import hybrid schedule and administration data repository
+repo_file <- choose.files(
+  default = 
+    paste0(user_directory,
+           "/Epic Vaccines Administered Report",
+           "/*.*"),
+  caption = "Select hybrid vaccine administration repository.")
+
+hybrid_repo <- readRDS(repo_file)
 
 # Format and analyze Epic schedule to date for dashboards ---------------------
-sched_to_date <- sched_repo
+admin_to_date <- hybrid_repo
 
-sched_to_date <- sched_to_date %>%
+admin_to_date <- admin_to_date %>%
   mutate(
-    # Determine whether appointment is for dose 1 or dose 2
-    Dose = ifelse(str_detect(Type, "DOSE 1"), "Dose 1",
-                  ifelse(str_detect(Type, "DOSE 2"), "Dose 2",
-                         ifelse(str_detect(Type, "(DOSE 3)|(BOOSTER)"), 
-                                "Dose 3/Booster", NA))),
+    # # Determine whether appointment is for dose 1 or dose 2
+    # Dose = ifelse(str_detect(Type, "DOSE 1"), "Dose 1",
+    #               ifelse(str_detect(Type, "DOSE 2"), "Dose 2",
+    #                      ifelse(str_detect(Type, "(DOSE 3)|(BOOSTER)"), 
+    #                             "Dose 3/Booster", NA))),
     # Determine appointment date, year, month, etc.
     ApptDate = date(Date),
     ApptYear = year(Date),
