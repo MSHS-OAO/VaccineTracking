@@ -168,170 +168,56 @@ admin_to_date <- hybrid_repo
 
 admin_to_date <- admin_to_date %>%
   mutate(
-    # # Determine whether appointment is for dose 1 or dose 2
-    # Dose = ifelse(str_detect(Type, "DOSE 1"), "Dose 1",
-    #               ifelse(str_detect(Type, "DOSE 2"), "Dose 2",
-    #                      ifelse(str_detect(Type, "(DOSE 3)|(BOOSTER)"), 
-    #                             "Dose 3/Booster", NA))),
-    # Determine appointment date, year, month, etc.
-    ApptDate = date(Date),
-    ApptYear = year(Date),
-    ApptMonth = month(Date),
-    ApptDay = day(Date),
-    ApptWeek = week(Date),
-    # Clean up department if it is duplicated in that column
-    Department = ifelse(str_detect(Department, ","),
-                        substr(Department, 1,
-                               str_locate(Department, ",") - 1),
-                        Department),
-    # Group arrived, completed, and checked out appts as arrived
-    Status = ifelse(`Appt Status` %in% c("Arrived", "Comp", "Checked Out"),
-                    "Arr", `Appt Status`),
-    # Update appointment status: classify any appts from prior days that are
-    # still in scheduled as No Shows
-    Status2 = ifelse(ApptDate < (today) & Status == "Sch", "No Show", 
-                     # Correct any appts erroneously marked as arrived early
-                     ifelse(ApptDate >= today & Status == "Arr", "Sch",
-                            Status)),
-    # # Determine whether the vaccine is an adult or pediatric dose
-    # VaxType = ifelse(Department %in% c("1468 MADISON PEDIATRIC VACCINE POD",
-    #                                    "1468 MADISON HOSP PEDS GEN",
-    #                                    "10 UNION SQ E PEDS GEN",
-    #                                    "234 E 85TH ST PEDS GEN",
-    #                                    "5 E 98  PEDS GENERAL") |
-    #                    `Provider/Resource` %in% c("DOSE 1 PEDIATRIC [1324684]",
-    #                                               "DOSE 2 PEDIATRIC [1324685]"),
-    #                  "Peds", "Adult"),
-    # # Determine manufacturer based on immunization and vaccine type fields
-    # Mfg = #Keep manufacturer as NA if the appointment hasn't been arrived
-    #   ifelse(Status2 != "Arr", NA,
-    #          # Assume any visits without immunization record are Pfizer
-    #          ifelse(is.na(Immunizations) |
-    #                   VaxType %in% c("Peds"), "Pfizer",
-    #                 # Any immunizations with Moderna in text classified as
-    #                 # Moderna, otherwise Pfizer
-    #                 ifelse(str_detect(Immunizations, "Moderna"), "Moderna",
-    #                        # Any immunizations with Johnson and Johnson are
-    #                        # classified as J&J
-    #                        ifelse(str_detect(Department, "VISITING DOCS") |
-    #                                 str_detect(Immunizations,
-    #                                            "Johnson and Johnson"),
-    #                               "J&J", "Pfizer")))),
-    # # Determine week number of year
-    # WeekNum = format(ApptDate, "%U"),
-    # Determine appointment day of week
-    DOW = weekdays(ApptDate),
-    # # Determine if patient's zip code is in NYS
-    # NYZip = substr(`ZIP Code`, 1, 5) %in% ny_zips$zipcode
+    VaxAgeGroup = ifelse(str_detect(VaxType, "Peds"), "Peds", "Adult")
   )
 
-# Crosswalk sites
-sched_to_date <- left_join(sched_to_date, dept_mappings,
-                           by = c("Department" = "Department"))
+# Verify if age group lines up with vaccine start dates
+admin_to_date <- left_join(admin_to_date,
+                           vacc_start_df %>%
+                             select(VaxType, StartDate),
+                           by = c("VaxAgeGroup" = "VaxType"))
 
-# Determine if there are any missing departments and notify user
-unmapped_dept <- sched_to_date %>%
-  filter(is.na(Site)) %>%
-  select(Department) %>%
-  distinct()
-
-if(nrow(unmapped_dept) > 0) {
-  stop(paste0("Check department mappings. Missing departments include ",
-              paste(as.vector(unmapped_dept$Department), collapse = ", "),
-              "."))
-}
-
-# Determine vaccine type (adult vs peds) administered based on department, provider, and age, as appropriate
-sched_to_date <- sched_to_date %>%
-  mutate(
-    # Create a column for age grouper
-    Age_Grouper = ifelse(str_detect(Age, "\\ y.o."), "years",
-                         ifelse(str_detect(Age, "\\ m.o."), "months",
-                                ifelse(str_detect(Age, "\\ days"), "days",
-                                       "unknown"))),
-    # Convert string with age to numeric
-    Age_Numeric = 
-      ifelse(Age_Grouper == "years",
-             as.numeric(str_extract(Age,
-                                    # pattern = "(?<=Deceased\\ \\().+(?=\\ y.o.)")),
-                                    paste("(?<=Deceased\\ \\()[0-9]+(?=\\ y.o.)",
-                                          "[0-9]+(?=\\ y.o.)",
-                                          sep = "|"))),
-             ifelse(Age_Grouper == "months",
-                    as.numeric(str_extract(Age, "[0-9]+(?=\\ m.o.)")) / 12,
-                    ifelse(Age_Grouper == "days",
-                           as.numeric(
-                             str_extract(Age, "[0-9]+(?=\\ days)")) / 365,
-                           ifelse(Age_Grouper == "unknown", 10000,
-                                  NA_integer_)))),
-    # Determine vaccine type based on department, provider/resource, and age if necessary
-    VaxType = ifelse(
-      `Vaccine Age Group` %in% "Peds" |
-        (`Vaccine Age Group` %in% "Both" &
-           # Determine if provider/resource at MSBI is peds
-           (`Provider/Resource` %in% c("DOSE 1 PEDIATRIC [1324684]",
-                                       "DOSE 2 PEDIATRIC [1324685]") |
-              (`Setting Grouper` %in% c("School Based Practice", "MSHS Practice") &
-                 Age_Numeric < 12))),
-      "Peds", "Adult"),
-    # Determine manufacturer based on immunization field and vaccine type fields
-    Mfg = #Keep manufacturer as NA if the appointment hasn't been arrived
-      ifelse(Status2 != "Arr", NA,
-             # Any blank immunizations and any peds assumed to be Pfizer
-             ifelse(is.na(Immunizations) |
-                      VaxType %in% c("Peds"), "Pfizer",
-                    # Any immunizations with Moderna in text classified as Moderna
-                    ifelse(str_detect(Immunizations, "Moderna"), "Moderna",
-                           # Any visiting docs or Johnson and Johnson
-                           # immunizations classified as J&J
-                           ifelse(str_detect(Department, "VISITING DOCS") |
-                                    str_detect(Immunizations,
-                                               "Johnson and Johnson"),
-                                  "J&J", "Pfizer")))),
-    Site =
-      # Roll up any Moderna administered at MSB for YWCA to MSH
-      ifelse(Site %in% c("MSB") & Mfg %in% c("Moderna"), "MSH",
-             Site),
-    # Manually correct any J&J doses erroneously documented as dose 2 and change to dose 1
-    Dose = ifelse(Mfg %in% c("J&J") & Dose %in% c("Dose 2"), "Dose 1", Dose))
+admin_to_date <- admin_to_date %>%
+  mutate(VerifyVaxType = Date >= StartDate,
+         VaxAgeGroup = ifelse(!VerifyVaxType, "Adult", VaxAgeGroup)) %>%
+  select(-StartDate, -VerifyVaxType)
 
 # Determine vaccine week based on appointment date
-sched_to_date <- left_join(sched_to_date,
+admin_to_date <- left_join(admin_to_date,
                            all_dates,
-                           by = c("ApptDate" = "Date",
-                                  "VaxType" = "VaxType"))
+                           by = c("Date" = "Date",
+                                  "VaxAgeGroup" = "VaxType"))
 
 # Summarize schedule data for Epic sites by key stratification
-sched_summary <- sched_to_date %>%
-  filter(Status2 %in% c("Arr") &
-           ApptDate <= today) %>%
-  group_by(Site,
-           VaxType,
+admin_to_date_summary <- admin_to_date %>%
+  group_by(`Hospital Roll Up`,
+           VaxAgeGroup,
            Dose,
            VaccWeek,
            WeekDates) %>%
-  summarize(Count = n(),
+  summarize(Count = sum(Count, na.rm = TRUE),
             .groups = "keep") %>%
   pivot_wider(names_from = Dose,
               values_from = Count) %>%
   ungroup() %>%
+  rename(Site = `Hospital Roll Up`) %>%
   mutate(AllDoses = select(., contains("Dose")) %>%
            rowSums(na.rm = TRUE)) %>%
-  arrange(VaxType, VaccWeek, Site)
+  arrange(VaxAgeGroup, VaccWeek, Site)
 
-adult_sched_summary <- sched_summary %>%
-  filter(VaxType %in% "Adult")
+adult_admin_summary <- admin_to_date_summary %>%
+  filter(VaxAgeGroup %in% "Adult")
 
-peds_sched_summary <- sched_summary %>%
-  filter(VaxType %in% "Peds")
+peds_admin_summary <- admin_to_date_summary %>%
+  filter(VaxAgeGroup %in% "Peds")
 
-export_list <- list("Adult" = adult_sched_summary,
-                    "Peds" = peds_sched_summary)
+export_list <- list("Adult" = adult_admin_summary,
+                    "Peds" = peds_admin_summary)
 
 write_xlsx(export_list,
            path = paste0(user_directory,
                          "/Arr Visits Weekly Summary",
-                         "/Vaccine Arrivals as of ",
+                         "/Vaccines Administered as of ",
                          format(Sys.Date(), "%Y-%m-%d"),
                          ".xlsx"))
 
