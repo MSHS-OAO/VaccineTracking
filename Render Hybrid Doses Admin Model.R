@@ -23,6 +23,7 @@ update_repo <- TRUE
 rmarkdown::render(here::here("MSHS Vaccines Administered Hybrid Data Model.Rmd"), 
                   output_file = paste0(
                     user_directory,
-                    "/Hybrid Repo Sched & Admin Data",
+                    "/Hybrid Sched & Admin Reporting",
+                    "/Hybrid Model Dashboard",
                     "/MSHS COVID-19 Vaccines Administered ",     
                     format(Sys.Date(), "%m-%d-%y")))

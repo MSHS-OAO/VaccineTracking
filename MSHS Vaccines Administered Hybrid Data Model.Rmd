@@ -69,7 +69,7 @@ user_path <- paste0(user_directory, "\\*.*")
 # Import reference data for site and pod mappings
 dept_mappings <- read_excel(paste0(
   user_directory,
-  "/Hybrid Repo Sched & Admin Data",
+  "/Hybrid Sched & Admin Reporting",
   "/Hybrid Reporting Dept Mapping 2022-09-27.xlsx"),
   sheet = "Hybrid Dept Mapping")
 
@@ -103,31 +103,36 @@ if (initial_run) {
   # Import schedule repository daily summary for 2020 and 2021
   sched_repo_summary <- readRDS(
     paste0(user_directory,
-           "/Hybrid Repo Sched & Admin Data",
+           "/Hybrid Sched & Admin Reporting",
+           "/Hybrid Model Repo",
            "/Sched Arr Visits 2020-2021 Daily Summary 2022-09-14.RDS"))
   
   # Import vaccine administration repository daily summary for Jan-Jun 2022
   vax_admin_repo_summary <- readRDS(
     paste0(user_directory,
-           "/Hybrid Repo Sched & Admin Data",
-           "/Vaccine Administration Daily Summary 01012022 to 09102022 as of 2022-09-14.RDS"))
+           "/Hybrid Sched & Admin Reporting",
+           "/Hybrid Model Repo",
+           "/Vaccine Administration Daily Summary 01012022 to 09102022 as of 2022-10-04.RDS"))
   
   hybrid_repo <- rbind(sched_repo_summary,
                        vax_admin_repo_summary)
   
   # Save new repository
-  saveRDS(hybrid_repo, paste0(user_directory, "/Epic Vaccines Administered Report/",
-                             "Hybrid Vaccine Admin Data ",
-                             format(min(hybrid_repo$Date), "%m%d%y"), " to ",
-                             format(max(hybrid_repo$Date), "%m%d%y"),
-                             " on ", format(Sys.time(), "%m%d%y %H%M"), ".rds"))
+  saveRDS(hybrid_repo, paste0(user_directory, 
+                              "/Hybrid Sched & Admin Reporting",
+                              "/Hybrid Model Repo",
+                              "/Hybrid Vaccine Admin Data ",
+                              format(min(hybrid_repo$Date), "%m%d%y"), " to ",
+                              format(max(hybrid_repo$Date), "%m%d%y"),
+                              " on ", format(Sys.time(), "%m%d%y %H%M"), ".rds"))
 } else {
   
   # Select repository
   repo_file <- choose.files(
     default = 
       paste0(user_directory,
-             "/Epic Vaccines Administered Report",
+             "/Hybrid Sched & Admin Reporting",
+             "/Hybrid Model Repo",
              "/*.*"),
     caption = "Select hybrid vaccine administration repository.")
   
@@ -144,8 +149,8 @@ if (update_repo) {
   weekly_vax_admin <- choose.files(
     default = 
       paste0(user_directory,
-             "/Epic Vaccines Administered Report",
-             "/Weekly Automated Reports/*.*"),
+             "/Hybrid Sched & Admin Reporting",
+             "/Vaccine Admin Reports/*.*"),
     caption = "Select weekly vaccine administration data.")
   
   weekly_vax_admin <- read_excel(weekly_vax_admin)
@@ -219,11 +224,13 @@ if (update_repo) {
   hybrid_repo <- rbind(hybrid_repo, weekly_admin_summary)
 
   # Save new repository
-  saveRDS(hybrid_repo, paste0(user_directory, "/Epic Vaccines Administered Report/",
-                             "Hybrid Vaccine Admin Data ",
-                             format(min(hybrid_repo$Date), "%m%d%y"), " to ",
-                             format(max(hybrid_repo$Date), "%m%d%y"),
-                             " on ", format(Sys.time(), "%m%d%y %H%M"), ".rds"))
+  saveRDS(hybrid_repo, paste0(user_directory,
+                              "/Hybrid Sched & Admin Reporting",
+                              "/Hybrid Model Repo",
+                              "/Hybrid Vaccine Admin Data ",
+                              format(min(hybrid_repo$Date), "%m%d%y"), " to ",
+                              format(max(hybrid_repo$Date), "%m%d%y"),
+                              " on ", format(Sys.time(), "%m%d%y %H%M"), ".rds"))
 
 } else {
 

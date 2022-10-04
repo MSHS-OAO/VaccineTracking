@@ -49,7 +49,7 @@ sched_repo_dept_names_id <- sched_repo %>%
 # Import vaccine administration data
 hist_vax_admin <- read_excel(paste0(
   user_directory,
-  "/Epic Vaccines Administered Report",
+  "/Epic Vaccines Administered Report Validation",
   "/Version4-Jan-June2022.xls"
 ))
 
@@ -70,5 +70,5 @@ hybrid_data_dept_list <- hybrid_data_dept_list %>%
 
 write_xlsx(hybrid_data_dept_list,
            path = paste0(user_directory,
-                         "/Hybrid Repo Sched & Admin Data",
+                         "/Hybrid Sched & Admin Reporting",
                          "/Epic Department Names and IDs 2022-08-03.xlsx"))

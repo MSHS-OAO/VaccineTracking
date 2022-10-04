@@ -40,8 +40,8 @@ if ("Presidents" %in% list.files("J://")) {
 # Import reference data for site and pod mappings
 dept_mappings <- read_excel(paste0(
   user_directory,
-  "/Hybrid Repo Sched & Admin Data",
-  "/Hybrid Reporting Dept Mapping 2022-08-08.xlsx"),
+  "/Hybrid Sched & Admin Reporting",
+  "/Hybrid Reporting Dept Mapping 2022-09-27.xlsx"),
   sheet = "Hybrid Dept Mapping")
 
 sched_data_mappings <- dept_mappings %>%
@@ -175,7 +175,7 @@ sched_arr_visits_daily_summary <- sched_to_date %>%
 # Save patient level data
 # saveRDS(sched_to_date,
 #         file = paste0(user_directory,
-#                       "/Hybrid Repo Sched & Admin Data",
+#                       "/Hybrid Sched & Admin Reporting",
 #                       "/Sched Arr Visits 2020-2021 Summary ",
 #                       format(today, "%Y-%m-%d"),
 #                       ".rds"))
@@ -183,7 +183,7 @@ sched_arr_visits_daily_summary <- sched_to_date %>%
 # Save daily summary of arrived visits
 saveRDS(sched_arr_visits_daily_summary,
         file = paste0(user_directory,
-                      "/Hybrid Repo Sched & Admin Data",
+                      "/Hybrid Sched & Admin Reporting",
                       "/Sched Arr Visits 2020-2021 Daily Summary ",
                       format(today, "%Y-%m-%d"),
                       ".rds"))

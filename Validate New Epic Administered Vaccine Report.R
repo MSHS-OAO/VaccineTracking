@@ -45,7 +45,7 @@ user_path <- paste0(user_directory, "\\*.*")
 # Import reference data for site and pod mappings
 dept_mappings <- read_excel(paste0(
   user_directory,
-  "/Hybrid Repo Sched & Admin Data",
+  "/Hybrid Sched & Admin Reporting",
   "/Hybrid Reporting Dept Mapping 2022-08-08.xlsx"),
   sheet = "Hybrid Dept Mapping")
 

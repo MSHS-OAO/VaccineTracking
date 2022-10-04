@@ -41,8 +41,8 @@ if ("Presidents" %in% list.files("J://")) {
 # Import reference data for site and pod mappings
 dept_mappings <- read_excel(paste0(
   user_directory,
-  "/Hybrid Repo Sched & Admin Data",
-  "/Hybrid Reporting Dept Mapping 2022-09-13.xlsx"),
+  "/Hybrid Sched & Admin Reporting",
+  "/Hybrid Reporting Dept Mapping 2022-09-27.xlsx"),
   sheet = "Hybrid Dept Mapping")
 
 vax_admin_data_mappings <- dept_mappings %>%
@@ -55,7 +55,8 @@ today <- Sys.Date()
 # Import historical data for vaccines administered ----------------------
 hist_vax_admin <- read_excel(paste0(
   user_directory,
-  "/Epic Vaccines Administered Report",
+  "/Hybrid Sched & Admin Reporting",
+  "/Vaccine Admin Reports",
   "/Vaccines Administered 01012022 to 09102022.xls"
 ))
 
@@ -134,23 +135,24 @@ vax_admin_repo_summary <- vax_admin_to_date %>%
 start_date <- format(min(vax_admin_repo_summary$Date), "%m%d%Y")
 end_date <- format(max(vax_admin_repo_summary$Date), "%m%d%Y")
 
-# saveRDS(vax_admin_repo_summary,
-#         paste0(user_directory,
-#                "/Hybrid Repo Sched & Admin Data",
-#                "/Vaccine Administration Daily Summary ",
-#                start_date,
-#                " to ",
-#                end_date,
-#                " as of ",
-#                format(today, "%Y-%m-%d"),
-#                ".rds"))
-# 
+saveRDS(vax_admin_repo_summary,
+        paste0(user_directory,
+               "/Hybrid Sched & Admin Reporting",
+               "/Hybrid Model Repo",
+               "/Vaccine Administration Daily Summary ",
+               start_date,
+               " to ",
+               end_date,
+               " as of ",
+               format(today, "%Y-%m-%d"),
+               ".rds"))
+
 
 
 # # Save standardized, static vaccines administered repository as .RDS for use in future reporting ----------
 # saveRDS(vax_admin_repo_summary,
 #         paste0(user_directory,
-#                "/Hybrid Repo Sched & Admin Data",
+#                "/Hybrid Sched & Admin Reporting",
 #                "/Vaccines Admin Summary Jan-Jun2022 ",
 #                format(today),
 #                ".RDS"))

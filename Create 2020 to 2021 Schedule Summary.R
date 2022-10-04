@@ -182,7 +182,7 @@ sched_repo_summary <- sched_to_date %>%
 # Save standardized, static schedule repository as .RDS for use in future reporting --------------------------
 saveRDS(sched_repo_summary,
         paste0(user_directory,
-               "/Hybrid Repo Sched & Admin Data",
+               "/Hybrid Sched & Admin Reporting",
                "/Sched Repo Summary 2020-2021 ",
                format(today),
                ".RDS"))

@@ -61,7 +61,7 @@ user_path <- paste0(user_directory, "\\*.*")
 # Import reference data for site and pod mappings
 dept_mappings <- read_excel(paste0(
   user_directory,
-  "/Hybrid Repo Sched & Admin Data",
+  "/Hybrid Sched & Admin Reporting",
   "/Hybrid Reporting Dept Mapping 2022-09-27.xlsx"),
   sheet = "Hybrid Dept Mapping")
 
@@ -157,7 +157,8 @@ all_dates <- all_dates %>%
 repo_file <- choose.files(
   default = 
     paste0(user_directory,
-           "/Epic Vaccines Administered Report",
+           "/Hybrid Sched & Admin Reporting",
+           "/Hybrid Model Repo",
            "/*.*"),
   caption = "Select hybrid vaccine administration repository.")
 
