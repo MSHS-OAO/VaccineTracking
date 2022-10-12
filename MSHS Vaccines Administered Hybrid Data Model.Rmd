@@ -220,6 +220,12 @@ if (update_repo) {
     summarize(Count = n()) %>%
     ungroup()
 
+  # Remove any duplicate dates, departments, etc.
+  hybrid_repo <- anti_join(hybrid_repo,
+                           weekly_admin_summary,
+                           by = c("Date",
+                                  "Department"))
+  
   # Bind hybrid repository repository and most recent week's vaccine administration data
   hybrid_repo <- rbind(hybrid_repo, weekly_admin_summary)
 
