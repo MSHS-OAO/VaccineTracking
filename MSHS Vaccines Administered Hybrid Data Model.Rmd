@@ -70,7 +70,7 @@ user_path <- paste0(user_directory, "\\*.*")
 dept_mappings <- read_excel(paste0(
   user_directory,
   "/Hybrid Sched & Admin Reporting",
-  "/Hybrid Reporting Dept Mapping 2022-09-27.xlsx"),
+  "/Hybrid Reporting Dept Mapping 2022-10-27.xlsx"),
   sheet = "Hybrid Dept Mapping")
 
 vax_admin_data_mappings <- dept_mappings %>%
@@ -198,14 +198,14 @@ if (update_repo) {
                  str_detect(replace_na(PRC_NAME, ""), "(DOSE 3)|(BOOSTER)"),
                  "Dose 3/Booster",
                  ifelse(
-                   str_detect(replace_na(RESPONSE_LIST, ""), "First Dose"),
+                   str_detect(replace_na(RESPONSE_LIST, ""), "First"),
                    "Dose 1",
                    ifelse(
-                     str_detect(replace_na(RESPONSE_LIST, ""), "Second Dose"),
+                     str_detect(replace_na(RESPONSE_LIST, ""), "Second"),
                      "Dose 2",
                      ifelse(
                        str_detect(replace_na(RESPONSE_LIST, ""),
-                                  "(Third Dose) | (Booster Dose)"),
+                                  "(Third) | (Booster)"),
                        "Dose 3/Booster",
                        ifelse(VaxType %in% "Peds (Pfizer 6mo-4yo, Moderna 6mo-6yo)",
                               "Dose 1", "Dose 3/Booster"))))))),

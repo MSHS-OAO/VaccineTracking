@@ -62,7 +62,7 @@ user_path <- paste0(user_directory, "\\*.*")
 dept_mappings <- read_excel(paste0(
   user_directory,
   "/Hybrid Sched & Admin Reporting",
-  "/Hybrid Reporting Dept Mapping 2022-09-27.xlsx"),
+  "/Hybrid Reporting Dept Mapping 2022-10-27.xlsx"),
   sheet = "Hybrid Dept Mapping")
 
 vax_admin_data_mappings <- dept_mappings %>%
@@ -136,10 +136,10 @@ yearly_summary <- admin_to_date %>%
 
 export_list <- list("Annual Summary" = yearly_summary)
 
-write_xlsx(export_list,
-           path = paste0(user_directory,
-                         "/AdHoc",
-                         "/Vaccines Administered by Year as of ",
-                         format(Sys.Date(), "%Y-%m-%d"),
-                         ".xlsx"))
+# write_xlsx(export_list,
+#            path = paste0(user_directory,
+#                          "/AdHoc",
+#                          "/Vaccines Administered by Year as of ",
+#                          format(Sys.Date(), "%Y-%m-%d"),
+#                          ".xlsx"))
 
