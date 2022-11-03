@@ -238,8 +238,6 @@ if (update_repo) {
                               format(max(hybrid_repo$Date), "%m%d%y"),
                               " on ", format(Sys.time(), "%m%d%y %H%M"), ".rds"))
 
-} else {
-
 }
 
 vax_admin_start_date <- min(hybrid_repo$Date)
