@@ -28,21 +28,39 @@ library(DT)
 
 # Reference data -----------------------
 # Determine directory
-if ("Presidents" %in% list.files("J://")) {
-  user_directory <- paste0("J:/Presidents/HSPI-PM/",
-                           "Operations Analytics and Optimization/Projects/",
-                           "System Operations/COVID Vaccine")
-} else {
-  user_directory <- paste0("J:/deans/Presidents/HSPI-PM/",
-                           "Operations Analytics and Optimization/Projects/",
-                           "System Operations/COVID Vaccine")
+define_root_path <- function(){
+  #Check if directory is from R Workbench; starts with '/home'
+  if(grepl("^/home", dirname(getwd()))){
+    #Check if mapped Sharedrvie starts at folder Presidents or deans
+    ifelse(list.files("/SharedDrive/") == "Presidents",
+           #Define prefix of path to share drive with R Workbench format
+           output <- "/SharedDrive/Presidents/", 
+           output <- "/SharedDrive/deans/Presidents/")
+  }#Check if directory is from R Studio; starts with an uppercase letter than ':'
+  else if(grepl("^[[:upper:]]+:", dirname(getwd()))){
+    #Determine which drive is mapped to Sharedrive (x)
+    for(i in LETTERS){
+      if(any(grepl("deans|Presidents", list.files(paste0(i, "://"))))){x <- i}
+    }
+    #Check if mapped Sharedrvie starts at folder Presidents or deans
+    ifelse(list.files(paste0(x, "://")) == "Presidents",
+           #Define prefix of path to share drive with R Studio format
+           output <- paste0(x, ":/Presidents/"),
+           output <- paste0(x, ":/deans/Presidents/"))
+    
+  }
+  return(output)
 }
+
+user_directory <- define_root_path()
 
 # Import reference data for site and pod mappings
 dept_mappings <- read_excel(paste0(
   user_directory,
+  "HSPI-PM/Operations Analytics and Optimization/",
+  "Projects/System Operations/COVID Vaccine",
   "/Hybrid Sched & Admin Reporting",
-  "/Hybrid Reporting Dept Mapping 2022-09-27.xlsx"),
+  "/Hybrid Reporting Dept Mapping 2023-07-24.xlsx"),
   sheet = "Hybrid Dept Mapping")
 
 vax_admin_data_mappings <- dept_mappings %>%
@@ -55,9 +73,11 @@ today <- Sys.Date()
 # Import historical data for vaccines administered ----------------------
 hist_vax_admin <- read_excel(paste0(
   user_directory,
+  "HSPI-PM/Operations Analytics and Optimization/",
+  "Projects/System Operations/COVID Vaccine",
   "/Hybrid Sched & Admin Reporting",
   "/Vaccine Admin Reports",
-  "/Vaccines Administered 01012022 to 09102022.xls"
+  "/Vaccines Admin Jan2022 to July2023.xlsx"
 ))
 
 vax_admin_to_date <- unique(hist_vax_admin)
@@ -65,11 +85,11 @@ vax_admin_to_date <- unique(hist_vax_admin)
 # Map on Epic ID
 vax_admin_to_date <- left_join(vax_admin_to_date,
                                vax_admin_data_mappings,
-                               by = c("EPICDEPID" = "EpicID"))
+                               by = c("EPICDEPTID" = "EpicID"))
 
 # Determine if there are any missing departments and notify user
 unmapped_dept <- vax_admin_to_date %>%
-  select(DEPARTMENT_NAME, EPICDEPID, Site) %>%
+  select(DEPARTMENT_NAME, EPICDEPTID, Site) %>%
   distinct() %>%
   filter(!is.na(DEPARTMENT_NAME) & is.na(Site))
 
@@ -79,6 +99,13 @@ if(nrow(unmapped_dept) > 0) {
               "."))
 }
 
+# write_xlsx(unmapped_dept,
+#            path = paste0(user_directory,
+#                          "HSPI-PM/Operations Analytics and Optimization/",
+#                          "Projects/System Operations/COVID Vaccine",
+#                          "/Hybrid Sched & Admin Reporting",
+#                          "/Vaccine Admin Reports",
+#                          "/Unmapped_Depts 2023-07-24.xlsx"))
 
 
 vax_admin_to_date <- vax_admin_to_date %>%
@@ -119,8 +146,8 @@ vax_admin_to_date <- vax_admin_to_date %>%
                      ifelse(VaxType %in% "Peds (Pfizer 6mo-4yo, Moderna 6mo-6yo)",
                             "Dose 1", "Dose 3/Booster"))))))),
          Date = as.Date(str_extract(IMMUNE_DATE,
-                                    "[0-9]{2}\\-[A-Za-z]{3}\\-[0-9]{4}"),
-                        format = "%d-%b-%Y")
+                                    "[0-9]{2}\\-[A-Za-z]{3}\\-[0-9]{2}"),
+                        format = "%d-%b-%y")
          ) %>%
   rename(Department = DEPARTMENT_NAME)
 
@@ -137,6 +164,8 @@ end_date <- format(max(vax_admin_repo_summary$Date), "%m%d%Y")
 
 saveRDS(vax_admin_repo_summary,
         paste0(user_directory,
+               "HSPI-PM/Operations Analytics and Optimization/",
+               "Projects/System Operations/COVID Vaccine",
                "/Hybrid Sched & Admin Reporting",
                "/Hybrid Model Repo",
                "/Vaccine Administration Daily Summary ",

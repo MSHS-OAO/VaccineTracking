@@ -69,9 +69,12 @@ user_path <- paste0(user_directory, "\\*.*")
 # Import reference data for site and pod mappings
 dept_mappings <- read_excel(paste0(
   user_directory,
+  "HSPI-PM/Operations Analytics and Optimization/",
+  "Projects/System Operations/COVID Vaccine",
   "/Hybrid Sched & Admin Reporting",
-  "/Hybrid Reporting Dept Mapping 2022-10-27.xlsx"),
+  "/Hybrid Reporting Dept Mapping 2023-07-24.xlsx"),
   sheet = "Hybrid Dept Mapping")
+
 
 vax_admin_data_mappings <- dept_mappings %>%
   select(-Department) %>%
@@ -103,6 +106,8 @@ if (initial_run) {
   # Import schedule repository daily summary for 2020 and 2021
   sched_repo_summary <- readRDS(
     paste0(user_directory,
+           "HSPI-PM/Operations Analytics and Optimization",
+           "/Projects/System Operations/COVID Vaccine",
            "/Hybrid Sched & Admin Reporting",
            "/Hybrid Model Repo",
            "/Sched Arr Visits 2020-2021 Daily Summary 2022-09-14.RDS"))
@@ -110,15 +115,19 @@ if (initial_run) {
   # Import vaccine administration repository daily summary for Jan-Jun 2022
   vax_admin_repo_summary <- readRDS(
     paste0(user_directory,
+           "HSPI-PM/Operations Analytics and Optimization",
+           "/Projects/System Operations/COVID Vaccine",
            "/Hybrid Sched & Admin Reporting",
            "/Hybrid Model Repo",
-           "/Vaccine Administration Daily Summary 01012022 to 09102022 as of 2022-10-04.RDS"))
+           "/Vaccine Administration Daily Summary 01012022 to 06302023 as of 2023-07-24.RDS"))
   
   hybrid_repo <- rbind(sched_repo_summary,
                        vax_admin_repo_summary)
   
   # Save new repository
   saveRDS(hybrid_repo, paste0(user_directory, 
+                              "HSPI-PM/Operations Analytics and Optimization",
+                              "/Projects/System Operations/COVID Vaccine",
                               "/Hybrid Sched & Admin Reporting",
                               "/Hybrid Model Repo",
                               "/Hybrid Vaccine Admin Data ",
